@@ -1,0 +1,396 @@
+import { App, PluginSettingTab, Setting } from 'obsidian';
+import CommentCollectorPlugin from './main';
+
+export interface IdentifierStyle {
+	fontSize: string;
+	fontColor: string;
+	backgroundColor: string;
+}
+
+export interface CommentCollectorSettings {
+	// Key is "parent/child", "parent/*", or "parent"
+	identifierStyles: Record<string, IdentifierStyle>;
+	configSource: 'settings' | 'file';
+	configFilePath: string;
+}
+
+export const DEFAULT_SETTINGS: CommentCollectorSettings = {
+	identifierStyles: {},
+	configSource: 'settings',
+	configFilePath: 'OccConfig.md',
+};
+
+export const EMPTY_STYLE: IdentifierStyle = {
+	fontSize: '',
+	fontColor: '',
+	backgroundColor: '',
+};
+
+// --- Helpers shared with decoration.ts and main.ts ---
+
+export function identifierKeyToClass(key: string): string {
+	return 'cc-id-' + key
+		.replace(/\/\*/g, '-wc')
+		.replace(/\//g, '-')
+		.replace(/[^a-zA-Z0-9-]/g, '-');
+}
+
+export function resolvedClass(
+	parent: string,
+	child: string,
+	styles: Record<string, IdentifierStyle>,
+): string | null {
+	if (child) {
+		if (styles[`${parent}/${child}`]) return identifierKeyToClass(`${parent}/${child}`);
+		if (styles[`${parent}/*`]) return identifierKeyToClass(`${parent}/*`);
+	} else {
+		if (styles[parent]) return identifierKeyToClass(parent);
+	}
+	return null;
+}
+
+export function resolvedStyle(
+	parent: string,
+	child: string,
+	styles: Record<string, IdentifierStyle>,
+): IdentifierStyle | null {
+	if (child) {
+		if (styles[`${parent}/${child}`]) return styles[`${parent}/${child}`] ?? null;
+		if (styles[`${parent}/*`]) return styles[`${parent}/*`] ?? null;
+	} else {
+		if (styles[parent]) return styles[parent] ?? null;
+	}
+	return null;
+}
+
+// --- Config file parse / render ---
+
+// Accepts hex with or without the # prefix; always stores WITH # (needed for CSS).
+export function normalizeHex(value: string): string {
+	const v = value.trim();
+	if (!v) return '';
+	if (/^#[0-9a-fA-F]{6}$/.test(v)) return v;
+	if (/^[0-9a-fA-F]{6}$/.test(v)) return '#' + v;
+	return '';
+}
+
+export function parseConfigTable(content: string): Record<string, IdentifierStyle> {
+	const styles: Record<string, IdentifierStyle> = {};
+	const lines = content.split('\n');
+	let headerSeen = false;
+	let separatorSeen = false;
+
+	for (const line of lines) {
+		const trimmed = line.trim();
+		if (!trimmed.startsWith('|')) continue;
+
+		// Separator row: only |, -, :, space
+		if (/^\|[-|:\s]+\|?$/.test(trimmed)) {
+			if (headerSeen) separatorSeen = true;
+			continue;
+		}
+
+		if (!headerSeen) {
+			headerSeen = true; // first pipe row = header
+			continue;
+		}
+
+		if (!separatorSeen) continue;
+
+		const cols = trimmed
+			.replace(/^\|/, '').replace(/\|$/, '')
+			.split('|')
+			.map(c => c.trim());
+
+		const [name = '', fontColor = '', bgColor = '', fontSize = ''] = cols;
+		if (!name) continue;
+
+		styles[name] = {
+			fontColor: normalizeHex(fontColor),
+			backgroundColor: normalizeHex(bgColor),
+			fontSize: fontSize.trim(),
+		};
+	}
+
+	return styles;
+}
+
+// Strip leading # from a hex color for config-file output (# is optional on read).
+function stripHash(hex: string): string {
+	return hex.startsWith('#') ? hex.slice(1) : hex;
+}
+
+export function renderConfigTable(styles: Record<string, IdentifierStyle>): string {
+	const header = [
+		'# Comment Collector Config',
+		'',
+		'Edit this table to define identifier styles. Save the file to apply changes.',
+		'Do not use the `#` prefix for hex colors. Font size accepts any CSS value (e.g. `1.1em`, `14px`).',
+		'',
+		'| Identifier | Font Color | Background Color | Font Size |',
+		'| ---------- | ---------- | ---------------- | --------- |',
+	].join('\n');
+
+	const entries = Object.entries(styles).sort(([a], [b]) => a.localeCompare(b));
+	const rows = entries.length > 0
+		? entries.map(([id, s]) => `| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} |`).join('\n')
+		: '| (no identifiers configured) | | | |';
+
+	return header + '\n' + rows + '\n';
+}
+
+// --- Color picker helpers ---
+
+function isValidHex(s: string): boolean {
+	return /^#[0-9a-fA-F]{6}$/.test(s);
+}
+
+function contrastColor(hex: string): string {
+	const r = parseInt(hex.slice(1, 3), 16);
+	const g = parseInt(hex.slice(3, 5), 16);
+	const b = parseInt(hex.slice(5, 7), 16);
+	return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5 ? '#000000' : '#ffffff';
+}
+
+function applyColorStyle(input: HTMLInputElement, hex: string): void {
+	input.style.backgroundColor = hex;
+	input.style.color = contrastColor(hex);
+}
+
+function clearColorStyle(input: HTMLInputElement): void {
+	input.style.backgroundColor = '';
+	input.style.color = '';
+}
+
+// --- Settings tab ---
+
+export class CommentCollectorSettingTab extends PluginSettingTab {
+	plugin: CommentCollectorPlugin;
+	private pendingIdentifier = '';
+
+	constructor(app: App, plugin: CommentCollectorPlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
+	}
+
+	display(): void {
+		const { containerEl } = this;
+		containerEl.empty();
+		containerEl.createEl('h2', { text: 'Comment Collector' });
+
+		// ── Config Source ──────────────────────────────────────────────────
+		containerEl.createEl('h3', { text: 'Config Source' });
+
+		new Setting(containerEl)
+			.setName('Identifier style source')
+			.setDesc('Define styles in this UI, or read them from a Markdown table in your vault')
+			.addDropdown(dd => dd
+				.addOption('settings', 'Settings UI')
+				.addOption('file', 'Config file')
+				.setValue(this.plugin.settings.configSource)
+				.onChange(async (v) => {
+					this.plugin.settings.configSource = v as 'settings' | 'file';
+					await this.plugin.saveSettings();
+					this.display();
+				})
+			);
+
+		if (this.plugin.settings.configSource === 'file') {
+			this.renderFileSourceUI(containerEl);
+		} else {
+			this.renderSettingsSourceUI(containerEl);
+		}
+	}
+
+	private renderFileSourceUI(containerEl: HTMLElement): void {
+		new Setting(containerEl)
+			.setName('Config file path')
+			.setDesc('Path to a Markdown file in your vault (relative to vault root) containing the style table')
+			.addText(t => t
+				.setPlaceholder('OccConfig.md')
+				.setValue(this.plugin.settings.configFilePath)
+				.onChange(async v => {
+					this.plugin.settings.configFilePath = v.trim() || 'OccConfig.md';
+					await this.plugin.saveSettings();
+				})
+			);
+
+		new Setting(containerEl)
+			.setName('Config file actions')
+			.addButton(btn => btn
+				.setButtonText('Create / update config file')
+				.setCta()
+				.onClick(() => {
+					this.plugin.createConfigFile().then(() => this.display());
+				})
+			)
+			.addButton(btn => btn
+				.setButtonText('Reload from file')
+				.onClick(() => {
+					this.plugin.reloadConfigFile().then(() => this.display());
+				})
+			);
+
+		containerEl.createEl('p', {
+			text: 'Table columns: Identifier | Font Color | Background Color | Font Size. '
+				+ 'The # prefix is optional for hex colors. The plugin reloads automatically when the file is saved.',
+			cls: 'setting-item-description',
+		});
+
+		const ids = Object.keys(this.plugin.settings.identifierStyles).sort();
+		containerEl.createEl('h4', { text: 'Currently loaded identifiers' });
+		containerEl.createEl('p', {
+			text: ids.length > 0 ? ids.join(', ') : 'None — create or reload the config file.',
+			cls: 'setting-item-description',
+		});
+	}
+
+	private renderSettingsSourceUI(containerEl: HTMLElement): void {
+		containerEl.createEl('h3', { text: 'Identifier Styles' });
+		containerEl.createEl('p', {
+			text: 'Add an identifier (e.g. "math/hot") or a wildcard (e.g. "math/*"). '
+				+ 'Specific identifiers take precedence over wildcards.',
+		});
+
+		for (const id of Object.keys(this.plugin.settings.identifierStyles)) {
+			this.renderIdentifierBlock(containerEl, id);
+		}
+
+		containerEl.createEl('h3', { text: 'Add Identifier' });
+		new Setting(containerEl)
+			.setName('Identifier')
+			.setDesc('Format: parent/child  or  parent/* to match all children of a parent')
+			.addText(text =>
+				text
+					.setPlaceholder('math/hot')
+					.onChange(v => { this.pendingIdentifier = v.trim(); }),
+			)
+			.addButton(btn =>
+				btn
+					.setButtonText('Add')
+					.setCta()
+					.onClick(async () => {
+						const id = this.pendingIdentifier;
+						if (!id || this.plugin.settings.identifierStyles[id]) return;
+						this.plugin.settings.identifierStyles[id] = { ...EMPTY_STYLE };
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+			);
+	}
+
+	private renderIdentifierBlock(containerEl: HTMLElement, id: string): void {
+		const style = this.plugin.settings.identifierStyles[id];
+		if (!style) return;
+		const wrap = containerEl.createDiv();
+		wrap.createEl('h4', { text: id });
+
+		new Setting(wrap)
+			.setName('Font size')
+			.setDesc('CSS value, e.g. 14px or 1.2em — leave blank to inherit')
+			.addText(t =>
+				t
+					.setPlaceholder('inherit')
+					.setValue(style.fontSize)
+					.onChange(async v => {
+						style.fontSize = v;
+						await this.plugin.saveSettings();
+						this.plugin.bumpStyleVersion();
+					}),
+			);
+
+		this.renderColorSetting(
+			wrap,
+			'Font color',
+			'Hex color for the annotation text',
+			() => style.fontColor,
+			async v => {
+				style.fontColor = v;
+				await this.plugin.saveSettings();
+				this.plugin.bumpStyleVersion();
+			},
+		);
+
+		this.renderColorSetting(
+			wrap,
+			'Background color',
+			'Hex color for the annotation background',
+			() => style.backgroundColor,
+			async v => {
+				style.backgroundColor = v;
+				await this.plugin.saveSettings();
+				this.plugin.bumpStyleVersion();
+			},
+		);
+
+		new Setting(wrap).addButton(btn =>
+			btn
+				.setButtonText('Remove')
+				.setWarning()
+				.onClick(async () => {
+					delete this.plugin.settings.identifierStyles[id];
+					await this.plugin.saveSettings();
+					this.plugin.bumpStyleVersion();
+					this.display();
+				}),
+		);
+	}
+
+	private renderColorSetting(
+		wrap: HTMLElement,
+		name: string,
+		desc: string,
+		getValue: () => string,
+		onChange: (v: string) => Promise<void>,
+	): void {
+		const setting = new Setting(wrap).setName(name).setDesc(desc);
+
+		const picker = document.createElement('input');
+		picker.type = 'color';
+		picker.style.cssText =
+			'width:36px;height:36px;padding:2px;border:none;border-radius:4px;' +
+			'cursor:pointer;background:transparent;margin-right:8px;flex-shrink:0;';
+
+		const hexInput = document.createElement('input');
+		hexInput.type = 'text';
+		hexInput.maxLength = 7;
+		hexInput.placeholder = '#rrggbb';
+		hexInput.style.cssText =
+			'width:100px;font-family:monospace;font-size:12px;' +
+			'padding:4px 8px;border-radius:4px;' +
+			'border:1px solid var(--background-modifier-border);' +
+			'transition:background-color 0.15s,color 0.15s;';
+
+		const current = getValue();
+		picker.value = isValidHex(current) ? current : '#000000';
+		hexInput.value = current;
+		if (isValidHex(current)) applyColorStyle(hexInput, current);
+
+		const sync = async (hex: string) => {
+			picker.value = hex;
+			applyColorStyle(hexInput, hex);
+			hexInput.value = hex;
+			await onChange(hex);
+		};
+
+		picker.addEventListener('input', () => {
+			if (isValidHex(picker.value)) sync(picker.value);
+		});
+
+		hexInput.addEventListener('input', () => {
+			if (isValidHex(hexInput.value)) sync(hexInput.value);
+		});
+
+		hexInput.addEventListener('change', async () => {
+			if (hexInput.value === '') {
+				clearColorStyle(hexInput);
+				await onChange('');
+			}
+		});
+
+		setting.controlEl.style.display = 'flex';
+		setting.controlEl.style.alignItems = 'center';
+		setting.controlEl.appendChild(picker);
+		setting.controlEl.appendChild(hexInput);
+	}
+}

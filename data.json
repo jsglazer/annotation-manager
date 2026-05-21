@@ -1,0 +1,26 @@
+{
+  "identifierStyles": {
+    "math/cold": {
+      "fontColor": "#2e8ca3",
+      "backgroundColor": "#fce3e8",
+      "fontSize": ""
+    },
+    "math/hot": {
+      "fontColor": "#c24040",
+      "backgroundColor": "",
+      "fontSize": "12px"
+    },
+    "stats": {
+      "fontColor": "#f5b761",
+      "backgroundColor": "",
+      "fontSize": ""
+    },
+    "stats/ttest": {
+      "fontColor": "#e31212",
+      "backgroundColor": "#fbfce3",
+      "fontSize": ""
+    }
+  },
+  "configSource": "file",
+  "configFilePath": "OccConfig.md"
+}

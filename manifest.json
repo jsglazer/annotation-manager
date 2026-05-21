@@ -1,0 +1,9 @@
+{
+	"id": "obsidian-comment-collector",
+	"name": "Obsidian Comment Collector",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "Collects annotated text in {={parent/child}text=} syntax and exposes it to Dataview.",
+	"author": "Josh",
+	"isDesktopOnly": false
+}
