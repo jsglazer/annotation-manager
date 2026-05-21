@@ -60,17 +60,18 @@ When **Config file** is selected, specify a vault-relative path (default: `OccCo
 ### Config file table format
 
 ```markdown
-| Identifier | Font Color | Background Color | Font Size |
-| ---------- | ---------- | ---------------- | --------- |
-| math/hot   | ff6b6b    | fff0f0            | 1.1em     |
-| math/*     | 4ecdc4    |                   |           |
-| stats      | ffd93d    | fffbe6            |           |
+| Identifier | Font Color | Background Color | Font Size | Example |
+| ---------- | ---------- | ---------------- | --------- | ------- |
+| math/hot   | ff6b6b     | fff0f0           | 1.1em     | <span style="color: #ff6b6b; background-color: #fff0f0; font-size: 1.1em">Example</span> |
+| math/*     | 4ecdc4     |                  |           | <span style="color: #4ecdc4">Example</span> |
+| stats      | ffd93d     | fffbe6           |           | <span style="color: #ffd93d; background-color: #fffbe6">Example</span> |
 ```
 
-- Column order must match: Identifier, Font Color, Background Color, Font Size
+- Column order must match: Identifier, Font Color, Background Color, Font Size, Example
 - Do not use the `#` prefix for hex colors (i.e. only `ff6b6b` is accepted)
 - Leave a cell blank to inherit the default value
 - Font size accepts any CSS value: `1.1em`, `14px`, `0.9rem`, etc.
+- The **Example** column is auto-generated when you use **Create / update config file** — it renders a styled preview of each identifier directly in the table
 
 ---
 

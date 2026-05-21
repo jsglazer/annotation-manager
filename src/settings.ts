@@ -118,6 +118,15 @@ export function parseConfigTable(content: string): Record<string, IdentifierStyl
 	return styles;
 }
 
+function makeExampleCell(style: IdentifierStyle): string {
+	const parts: string[] = [];
+	if (style.fontColor) parts.push(`color: ${style.fontColor}`);
+	if (style.backgroundColor) parts.push(`background-color: ${style.backgroundColor}`);
+	if (style.fontSize) parts.push(`font-size: ${style.fontSize}`);
+	if (parts.length === 0) return '';
+	return `<span style="${parts.join('; ')}">Example</span>`;
+}
+
 export function renderConfigTable(styles: Record<string, IdentifierStyle>): string {
 	const header = [
 		'# Annotation Manager Config',
@@ -125,14 +134,14 @@ export function renderConfigTable(styles: Record<string, IdentifierStyle>): stri
 		'Edit this table to define identifier styles. Save the file to apply changes.',
 		'Do not use the `#` prefix for hex colors. Font size accepts any CSS value (e.g. `1.1em`, `14px`).',
 		'',
-		'| Identifier | Font Color | Background Color | Font Size |',
-		'| ---------- | ---------- | ---------------- | --------- |',
+		'| Identifier | Font Color | Background Color | Font Size | Example |',
+		'| ---------- | ---------- | ---------------- | --------- | ------- |',
 	].join('\n');
 
 	const entries = Object.entries(styles).sort(([a], [b]) => a.localeCompare(b));
 	const rows = entries.length > 0
-		? entries.map(([id, s]) => `| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} |`).join('\n')
-		: '| (no identifiers configured) | | | |';
+		? entries.map(([id, s]) => `| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} | ${makeExampleCell(s)} |`).join('\n')
+		: '| (no identifiers configured) | | | | |';
 
 	return header + '\n' + rows + '\n';
 }
@@ -229,17 +238,33 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			);
 
 		containerEl.createEl('p', {
-			text: 'Table columns: Identifier | Font Color | Background Color | Font Size. '
+			text: 'Table columns: Identifier | Font Color | Background Color | Font Size | Example. '
 				+ 'No # prefix for hex colors. The plugin reloads automatically when the file is saved.',
 			cls: 'setting-item-description',
 		});
 
-		const ids = Object.keys(this.plugin.settings.identifierStyles).sort();
+		const styles = this.plugin.settings.identifierStyles;
+		const ids = Object.keys(styles).sort();
 		containerEl.createEl('h4', { text: 'Currently loaded identifiers' });
-		containerEl.createEl('p', {
-			text: ids.length > 0 ? ids.join(', ') : 'None — create or reload the config file.',
-			cls: 'setting-item-description',
-		});
+
+		if (ids.length === 0) {
+			containerEl.createEl('p', {
+				text: 'None — create or reload the config file.',
+				cls: 'setting-item-description',
+			});
+		} else {
+			const previewList = containerEl.createDiv('cc-file-preview-list');
+			for (const id of ids) {
+				const s = styles[id];
+				if (!s) continue;
+				const row = previewList.createDiv('cc-file-preview-row');
+				row.createEl('span', { text: id, cls: 'cc-file-preview-id' });
+				const sample = row.createEl('span', { text: 'Example', cls: 'cc-file-preview-sample' });
+				if (s.fontColor) sample.style.color = s.fontColor;
+				if (s.backgroundColor) sample.style.backgroundColor = s.backgroundColor;
+				if (s.fontSize) sample.style.fontSize = s.fontSize;
+			}
+		}
 	}
 
 	private renderSettingsSourceUI(containerEl: HTMLElement): void {

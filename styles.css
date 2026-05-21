@@ -147,6 +147,32 @@
 	padding: 1px 3px;
 }
 
+.cc-file-preview-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-top: 4px;
+}
+
+.cc-file-preview-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.cc-file-preview-id {
+	font-size: 0.85em;
+	font-weight: 600;
+	color: var(--text-accent);
+	min-width: 120px;
+}
+
+.cc-file-preview-sample {
+	border-radius: 2px;
+	padding: 1px 5px;
+	font-size: 0.85em;
+}
+
 /* ── Identifier suggest modal ────────────────────────────────────────────── */
 
 .cc-suggest-row {
