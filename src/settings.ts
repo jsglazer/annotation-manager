@@ -127,6 +127,41 @@ function makeExampleCell(style: IdentifierStyle): string {
 	return `<span style="${parts.join('; ')}">Example</span>`;
 }
 
+// Updates only the Example column cells in an existing config file, leaving everything else intact.
+export function injectExamples(content: string, styles: Record<string, IdentifierStyle>): string {
+	const lines = content.split('\n');
+	let headerSeen = false;
+	let separatorSeen = false;
+
+	const updated = lines.map(line => {
+		const trimmed = line.trim();
+		if (!trimmed.startsWith('|')) return line;
+
+		if (/^\|[-|:\s]+\|?$/.test(trimmed)) {
+			if (headerSeen) separatorSeen = true;
+			return line;
+		}
+
+		if (!headerSeen) { headerSeen = true; return line; }
+		if (!separatorSeen) return line;
+
+		const cols = trimmed.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+		const [name = ''] = cols;
+		if (!name || name.startsWith('(')) return line;
+
+		const style = styles[name];
+		const example = style ? makeExampleCell(style) : '';
+
+		const out = [...cols.slice(0, 4)];
+		while (out.length < 4) out.push('');
+		out.push(example);
+
+		return '| ' + out.join(' | ') + ' |';
+	});
+
+	return updated.join('\n');
+}
+
 export function renderConfigTable(styles: Record<string, IdentifierStyle>): string {
 	const header = [
 		'# Annotation Manager Config',

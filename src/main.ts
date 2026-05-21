@@ -4,6 +4,7 @@ import {
 	AnnotationManagerSettingTab,
 	DEFAULT_SETTINGS,
 	identifierKeyToClass,
+	injectExamples,
 	parseConfigTable,
 	renderConfigTable,
 	resolvedClass,
@@ -24,6 +25,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 	private fileAnnotations: Map<string, Annotation[]> = new Map();
 	private debouncedRefresh = debounce(() => this._refreshSidebar(), 150, true);
+	private _writingConfigFile = false;
 
 	async onload() {
 		await this.loadSettings();
@@ -120,8 +122,8 @@ export default class AnnotationManagerPlugin extends Plugin {
 					await this.indexFile(file);
 					this.injectDataviewMetadata(file);
 					this.debouncedRefresh();
-					// Auto-reload config when the config file changes
-					if (this.settings.configSource === 'file' && file.path === this.settings.configFilePath) {
+					// Auto-reload config when the config file changes (skip if we wrote it)
+					if (this.settings.configSource === 'file' && file.path === this.settings.configFilePath && !this._writingConfigFile) {
 						await this.reloadConfigFile();
 					}
 				}
@@ -366,6 +368,18 @@ export default class AnnotationManagerPlugin extends Plugin {
 		this.settings.identifierStyles = parseConfigTable(content);
 		await this.saveSettings();
 		this.bumpStyleVersion();
+
+		// Update Example column in-place; write back only if something changed
+		const updated = injectExamples(content, this.settings.identifierStyles);
+		if (updated !== content) {
+			this._writingConfigFile = true;
+			try {
+				await this.app.vault.modify(file, updated);
+			} finally {
+				this._writingConfigFile = false;
+			}
+		}
+
 		new Notice(`Loaded ${Object.keys(this.settings.identifierStyles).length} identifiers from ${path}`);
 	}
 

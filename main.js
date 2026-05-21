@@ -104,6 +104,34 @@ function makeExampleCell(style) {
   if (parts.length === 0) return "";
   return `<span style="${parts.join("; ")}">Example</span>`;
 }
+function injectExamples(content, styles) {
+  const lines = content.split("\n");
+  let headerSeen = false;
+  let separatorSeen = false;
+  const updated = lines.map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|")) return line;
+    if (/^\|[-|:\s]+\|?$/.test(trimmed)) {
+      if (headerSeen) separatorSeen = true;
+      return line;
+    }
+    if (!headerSeen) {
+      headerSeen = true;
+      return line;
+    }
+    if (!separatorSeen) return line;
+    const cols = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    const [name = ""] = cols;
+    if (!name || name.startsWith("(")) return line;
+    const style = styles[name];
+    const example = style ? makeExampleCell(style) : "";
+    const out = [...cols.slice(0, 4)];
+    while (out.length < 4) out.push("");
+    out.push(example);
+    return "| " + out.join(" | ") + " |";
+  });
+  return updated.join("\n");
+}
 function renderConfigTable(styles) {
   const header = [
     "# Annotation Manager Config",
@@ -618,6 +646,7 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
     // applies custom color to the annotation text content
     this.fileAnnotations = /* @__PURE__ */ new Map();
     this.debouncedRefresh = (0, import_obsidian3.debounce)(() => this._refreshSidebar(), 150, true);
+    this._writingConfigFile = false;
   }
   async onload() {
     await this.loadSettings();
@@ -697,7 +726,7 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
           await this.indexFile(file);
           this.injectDataviewMetadata(file);
           this.debouncedRefresh();
-          if (this.settings.configSource === "file" && file.path === this.settings.configFilePath) {
+          if (this.settings.configSource === "file" && file.path === this.settings.configFilePath && !this._writingConfigFile) {
             await this.reloadConfigFile();
           }
         }
@@ -909,6 +938,15 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
     this.settings.identifierStyles = parseConfigTable(content);
     await this.saveSettings();
     this.bumpStyleVersion();
+    const updated = injectExamples(content, this.settings.identifierStyles);
+    if (updated !== content) {
+      this._writingConfigFile = true;
+      try {
+        await this.app.vault.modify(file, updated);
+      } finally {
+        this._writingConfigFile = false;
+      }
+    }
     new import_obsidian3.Notice(`Loaded ${Object.keys(this.settings.identifierStyles).length} identifiers from ${path}`);
   }
   // ── Dataview integration ─────────────────────────────────────────────────
