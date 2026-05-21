@@ -132,6 +132,26 @@
 	color: var(--text-faint);
 }
 
+/* ── Settings info panel ─────────────────────────────────────────────────── */
+
+.cc-info-panel {
+	margin: 0 0 16px;
+	padding: 10px 14px;
+	background: var(--background-secondary);
+	border-left: 3px solid var(--interactive-accent);
+	border-radius: 4px;
+	font-size: 0.88em;
+	color: var(--text-muted);
+}
+
+.cc-info-panel p {
+	margin: 0 0 4px;
+}
+
+.cc-info-panel p:last-child {
+	margin-bottom: 0;
+}
+
 /* ── Settings live preview ───────────────────────────────────────────────── */
 
 .cc-style-preview {

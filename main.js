@@ -173,6 +173,15 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Annotation Manager" });
+    const infoPanel = containerEl.createDiv({ cls: "cc-info-panel" });
+    const p1 = infoPanel.createEl("p");
+    p1.appendText("If you encounter errors or have questions, please submit an Issue on the ");
+    p1.createEl("a", { text: "GitHub page", href: "https://github.com/jsglazer/annotation-manager/issues", attr: { target: "_blank", rel: "noopener" } });
+    p1.appendText(".");
+    const p2 = infoPanel.createEl("p");
+    p2.appendText("If you like this plugin\u2026thank Claude, who wrote it all! To see how I made this plugin without coding a single line, see the ");
+    p2.createEl("a", { text: "Updates folder", href: "https://github.com/jsglazer/annotation-manager/tree/main/Updates", attr: { target: "_blank", rel: "noopener" } });
+    p2.appendText(" in the repository.");
     containerEl.createEl("h3", { text: "Config Source" });
     new import_obsidian.Setting(containerEl).setName("Identifier style source").setDesc("Define styles in this UI, or read them from a Markdown table in your vault").addDropdown(
       (dd) => dd.addOption("settings", "Settings UI").addOption("file", "Config file").setValue(this.plugin.settings.configSource).onChange(async (v) => {
@@ -646,6 +655,9 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
     // applies custom color to the annotation text content
     this.fileAnnotations = /* @__PURE__ */ new Map();
     this.debouncedRefresh = (0, import_obsidian3.debounce)(() => this._refreshSidebar(), 150, true);
+    this.debouncedReloadConfig = (0, import_obsidian3.debounce)(() => {
+      void this.reloadConfigFile();
+    }, 3e3, true);
     this._writingConfigFile = false;
   }
   async onload() {
@@ -727,7 +739,7 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
           this.injectDataviewMetadata(file);
           this.debouncedRefresh();
           if (this.settings.configSource === "file" && file.path === this.settings.configFilePath && !this._writingConfigFile) {
-            await this.reloadConfigFile();
+            this.debouncedReloadConfig();
           }
         }
       })
@@ -858,7 +870,7 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
       const childDecls = [];
       if (style.fontColor) childDecls.push(`color: ${style.fontColor} !important`);
       childDecls.push(`background-color: transparent !important`);
-      rules.push(`.cm-editor .cm-content .cm-line .${cls} * { ${childDecls.join("; ")} }`);
+      rules.push(`.cm-editor .cm-content .cm-line .${cls} *:not(.cm-inline-code) { ${childDecls.join("; ")} }`);
     }
     el.textContent = rules.join("\n");
   }
@@ -875,30 +887,33 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
     });
   }
   processReadingView(el) {
+    var _a, _b;
     if (!this.syntaxHidingEnabled) return;
     if (!el.innerHTML.includes("{=")) return;
     const pattern = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}([\s\S]*?)=\}/g;
-    const codeBlocks = [];
-    let html = el.innerHTML.replace(
-      /<(pre|code)[^>]*>[\s\S]*?<\/\1>/gi,
-      (m) => {
-        codeBlocks.push(m);
-        return `\0CODE${codeBlocks.length - 1}\0`;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+    const toReplace = [];
+    let node;
+    while (node = walker.nextNode()) {
+      if ((_a = node.nodeValue) == null ? void 0 : _a.includes("{=")) {
+        toReplace.push(node);
       }
-    );
-    html = html.replace(
-      pattern,
-      (_match, parent, child, content) => {
-        const cls = this.textFormattingEnabled ? resolvedClass(parent, child != null ? child : "", this.settings.identifierStyles) : null;
-        const className = cls ? `cc-annotation ${cls}` : "cc-annotation";
-        return `<span class="${className}">${content.trim()}</span>`;
-      }
-    );
-    html = html.replace(/\x00CODE(\d+)\x00/g, (_, i) => {
-      var _a;
-      return (_a = codeBlocks[parseInt(i)]) != null ? _a : "";
-    });
-    el.innerHTML = html;
+    }
+    for (const textNode of toReplace) {
+      const parent = textNode.parentNode;
+      if (!parent) continue;
+      if (parent.tagName === "CODE" || parent.tagName === "PRE") continue;
+      const span = document.createElement("span");
+      span.innerHTML = ((_b = textNode.nodeValue) != null ? _b : "").replace(
+        pattern,
+        (_match, p, c, content) => {
+          const cls = this.textFormattingEnabled ? resolvedClass(p, c != null ? c : "", this.settings.identifierStyles) : null;
+          const className = cls ? `cc-annotation ${cls}` : "cc-annotation";
+          return `<span class="${className}">${content.trim()}</span>`;
+        }
+      );
+      parent.replaceChild(span, textNode);
+    }
   }
   async indexAllFiles() {
     const files = this.app.vault.getMarkdownFiles();

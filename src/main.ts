@@ -25,6 +25,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 	private fileAnnotations: Map<string, Annotation[]> = new Map();
 	private debouncedRefresh = debounce(() => this._refreshSidebar(), 150, true);
+	private debouncedReloadConfig = debounce(() => { void this.reloadConfigFile(); }, 3000, true);
 	private _writingConfigFile = false;
 
 	async onload() {
@@ -124,7 +125,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 					this.debouncedRefresh();
 					// Auto-reload config when the config file changes (skip if we wrote it)
 					if (this.settings.configSource === 'file' && file.path === this.settings.configFilePath && !this._writingConfigFile) {
-						await this.reloadConfigFile();
+						this.debouncedReloadConfig();
 					}
 				}
 			}),
@@ -274,11 +275,12 @@ export default class AnnotationManagerPlugin extends Plugin {
 			// Editor: same 4-class specificity as neutral baseline; comes later → wins by source order
 			rules.push(`.cm-editor .cm-content .cm-line .${cls} { ${decls.join('; ')} }`);
 
-			// Editor child spans (CM6 syntax tokens) — literal color beats Obsidian's inherit rules
+			// Editor child spans (CM6 syntax tokens) — literal color beats Obsidian's inherit rules.
+			// Excludes .cm-inline-code so inline code inside annotations keeps its own background.
 			const childDecls: string[] = [];
 			if (style.fontColor) childDecls.push(`color: ${style.fontColor} !important`);
 			childDecls.push(`background-color: transparent !important`);
-			rules.push(`.cm-editor .cm-content .cm-line .${cls} * { ${childDecls.join('; ')} }`);
+			rules.push(`.cm-editor .cm-content .cm-line .${cls} *:not(.cm-inline-code) { ${childDecls.join('; ')} }`);
 		}
 
 		el.textContent = rules.join('\n');
@@ -302,28 +304,34 @@ export default class AnnotationManagerPlugin extends Plugin {
 		if (!el.innerHTML.includes('{=')) return;
 
 		const pattern = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}([\s\S]*?)=\}/g;
+		const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+		const toReplace: Text[] = [];
+		let node: Node | null;
 
-		// Preserve code block content so we don't annotate inside it
-		const codeBlocks: string[] = [];
-		let html = el.innerHTML.replace(
-			/<(pre|code)[^>]*>[\s\S]*?<\/\1>/gi,
-			(m) => { codeBlocks.push(m); return `\x00CODE${codeBlocks.length - 1}\x00`; },
-		);
+		while ((node = walker.nextNode())) {
+			if ((node as Text).nodeValue?.includes('{=')) {
+				toReplace.push(node as Text);
+			}
+		}
 
-		html = html.replace(
-			pattern,
-			(_match, parent: string, child: string | undefined, content: string) => {
-				const cls = this.textFormattingEnabled
-					? resolvedClass(parent, child ?? '', this.settings.identifierStyles)
-					: null;
-				const className = cls ? `cc-annotation ${cls}` : 'cc-annotation';
-				return `<span class="${className}">${content.trim()}</span>`;
-			},
-		);
+		for (const textNode of toReplace) {
+			const parent = textNode.parentNode as Element | null;
+			if (!parent) continue;
+			if (parent.tagName === 'CODE' || parent.tagName === 'PRE') continue;
 
-		// Restore code blocks
-		html = html.replace(/\x00CODE(\d+)\x00/g, (_, i) => codeBlocks[parseInt(i)] ?? '');
-		el.innerHTML = html;
+			const span = document.createElement('span');
+			span.innerHTML = (textNode.nodeValue ?? '').replace(
+				pattern,
+				(_match, p: string, c: string | undefined, content: string) => {
+					const cls = this.textFormattingEnabled
+						? resolvedClass(p, c ?? '', this.settings.identifierStyles)
+						: null;
+					const className = cls ? `cc-annotation ${cls}` : 'cc-annotation';
+					return `<span class="${className}">${content.trim()}</span>`;
+				},
+			);
+			parent.replaceChild(span, textNode);
+		}
 	}
 
 	private async indexAllFiles() {
