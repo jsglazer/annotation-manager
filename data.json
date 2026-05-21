@@ -19,8 +19,13 @@
       "fontColor": "#e31212",
       "backgroundColor": "#fbfce3",
       "fontSize": ""
+    },
+    "stats/chi": {
+      "fontColor": "#b3f2c4",
+      "backgroundColor": "#a5d7f2",
+      "fontSize": ""
     }
   },
   "configSource": "file",
-  "configFilePath": "OccConfig.md"
+  "configFilePath": "AMConfig.md"
 }
