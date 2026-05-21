@@ -166,3 +166,5 @@ dv.table(['Note', 'Identifier', 'Annotation'], rows);
 - When **bracket visibility** is toggled off, annotations display as raw text in Reading View and are not styled
 - Avoid =} in annotation content — the lazy match will truncate the annotation at the first `=}` it finds
 - Custom colors are applied via inline styles, which override CM6 syntax highlighting
+
+Written by Claude!
