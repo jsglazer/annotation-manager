@@ -7,7 +7,7 @@ import {
 } from '@codemirror/view';
 import { RangeSetBuilder } from '@codemirror/state';
 import { IdentifierStyle, resolvedClass, resolvedStyle } from './settings';
-import CommentCollectorPlugin from './main';
+import AnnotationManagerPlugin from './main';
 
 // New syntax: {={parent/child}content=}  or  {={parent}content=}
 const PATTERN = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}(.*?)=\}/g;
@@ -84,7 +84,7 @@ function addContentMarks(
 	if (lastPos < text.length) builder.add(docStart + lastPos, docEnd, mark);
 }
 
-function buildDecorations(view: EditorView, plugin: CommentCollectorPlugin): DecorationSet {
+function buildDecorations(view: EditorView, plugin: AnnotationManagerPlugin): DecorationSet {
 	const builder = new RangeSetBuilder<Decoration>();
 	const { selection } = view.state;
 	const inLP = isLivePreview(view);
@@ -157,7 +157,7 @@ function buildDecorations(view: EditorView, plugin: CommentCollectorPlugin): Dec
 	return builder.finish();
 }
 
-export function createCommentViewPlugin(plugin: CommentCollectorPlugin) {
+export function createCommentViewPlugin(plugin: AnnotationManagerPlugin) {
 	return ViewPlugin.fromClass(
 		class {
 			decorations: DecorationSet;

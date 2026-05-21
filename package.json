@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-comment-collector",
+	"name": "annotation-manager",
 	"version": "1.0.0",
-	"description": "Collects annotated text in {{[parent/child] text}} syntax and exposes it to Dataview.",
+	"description": "Annotate text inline with {={id}text=} syntax, view all annotations in a sidebar, and query them via Dataview.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {

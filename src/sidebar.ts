@@ -1,13 +1,13 @@
 import { ItemView, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian';
-import CommentCollectorPlugin from './main';
+import AnnotationManagerPlugin from './main';
 
-export const SIDEBAR_VIEW_TYPE = 'comment-collector-sidebar';
+export const SIDEBAR_VIEW_TYPE = 'annotation-manager-sidebar';
 
-export class CommentSidebarView extends ItemView {
-	private plugin: CommentCollectorPlugin;
-	private collapsedSections = new Set<string>();
+export class AnnotationSidebarView extends ItemView {
+	private plugin: AnnotationManagerPlugin;
+	private expandedSections = new Set<string>();
 
-	constructor(leaf: WorkspaceLeaf, plugin: CommentCollectorPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: AnnotationManagerPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 	}
@@ -74,9 +74,9 @@ export class CommentSidebarView extends ItemView {
 
 			// Header row: arrow + identifier label + count
 			const header = section.createDiv('cc-sidebar-header');
-			const isCollapsed = this.collapsedSections.has(key);
+			const isExpanded = this.expandedSections.has(key);
 			const arrowEl = header.createEl('span', {
-				text: isCollapsed ? '▸' : '▾',
+				text: isExpanded ? '▾' : '▸',
 				cls: 'cc-sidebar-arrow',
 			});
 			header.createEl('span', {
@@ -88,23 +88,23 @@ export class CommentSidebarView extends ItemView {
 				cls: 'cc-sidebar-count',
 			});
 
-			// Items container — hidden when collapsed
+			// Items container — hidden when collapsed (default)
 			const itemsEl = section.createDiv('cc-sidebar-items');
-			if (isCollapsed) itemsEl.style.display = 'none';
+			if (!isExpanded) itemsEl.style.display = 'none';
 
 			sectionMeta.push({ key, itemsEl, arrowEl });
 
 			// Toggle on header click
 			header.addEventListener('click', () => {
-				const nowCollapsed = !this.collapsedSections.has(key);
-				if (nowCollapsed) {
-					this.collapsedSections.add(key);
-					itemsEl.style.display = 'none';
-					arrowEl.textContent = '▸';
-				} else {
-					this.collapsedSections.delete(key);
+				const nowExpanded = !this.expandedSections.has(key);
+				if (nowExpanded) {
+					this.expandedSections.add(key);
 					itemsEl.style.display = '';
 					arrowEl.textContent = '▾';
+				} else {
+					this.expandedSections.delete(key);
+					itemsEl.style.display = 'none';
+					arrowEl.textContent = '▸';
 				}
 			});
 
@@ -143,7 +143,7 @@ export class CommentSidebarView extends ItemView {
 		// ── Expand / Collapse All handlers ──────────────────────────────────
 		expandAllBtn.addEventListener('click', () => {
 			for (const { key, itemsEl, arrowEl } of sectionMeta) {
-				this.collapsedSections.delete(key);
+				this.expandedSections.add(key);
 				itemsEl.style.display = '';
 				arrowEl.textContent = '▾';
 			}
@@ -151,7 +151,7 @@ export class CommentSidebarView extends ItemView {
 
 		collapseAllBtn.addEventListener('click', () => {
 			for (const { key, itemsEl, arrowEl } of sectionMeta) {
-				this.collapsedSections.add(key);
+				this.expandedSections.delete(key);
 				itemsEl.style.display = 'none';
 				arrowEl.textContent = '▸';
 			}

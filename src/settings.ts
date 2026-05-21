@@ -1,5 +1,5 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
-import CommentCollectorPlugin from './main';
+import AnnotationManagerPlugin from './main';
 
 export interface IdentifierStyle {
 	fontSize: string;
@@ -7,14 +7,14 @@ export interface IdentifierStyle {
 	backgroundColor: string;
 }
 
-export interface CommentCollectorSettings {
+export interface AnnotationManagerSettings {
 	// Key is "parent/child", "parent/*", or "parent"
 	identifierStyles: Record<string, IdentifierStyle>;
 	configSource: 'settings' | 'file';
 	configFilePath: string;
 }
 
-export const DEFAULT_SETTINGS: CommentCollectorSettings = {
+export const DEFAULT_SETTINGS: AnnotationManagerSettings = {
 	identifierStyles: {},
 	configSource: 'settings',
 	configFilePath: 'OccConfig.md',
@@ -74,6 +74,10 @@ export function normalizeHex(value: string): string {
 	return '';
 }
 
+function stripHash(hex: string): string {
+	return hex.startsWith('#') ? hex.slice(1) : hex;
+}
+
 export function parseConfigTable(content: string): Record<string, IdentifierStyle> {
 	const styles: Record<string, IdentifierStyle> = {};
 	const lines = content.split('\n');
@@ -84,14 +88,13 @@ export function parseConfigTable(content: string): Record<string, IdentifierStyl
 		const trimmed = line.trim();
 		if (!trimmed.startsWith('|')) continue;
 
-		// Separator row: only |, -, :, space
 		if (/^\|[-|:\s]+\|?$/.test(trimmed)) {
 			if (headerSeen) separatorSeen = true;
 			continue;
 		}
 
 		if (!headerSeen) {
-			headerSeen = true; // first pipe row = header
+			headerSeen = true;
 			continue;
 		}
 
@@ -115,14 +118,9 @@ export function parseConfigTable(content: string): Record<string, IdentifierStyl
 	return styles;
 }
 
-// Strip leading # from a hex color for config-file output (# is optional on read).
-function stripHash(hex: string): string {
-	return hex.startsWith('#') ? hex.slice(1) : hex;
-}
-
 export function renderConfigTable(styles: Record<string, IdentifierStyle>): string {
 	const header = [
-		'# Comment Collector Config',
+		'# Annotation Manager Config',
 		'',
 		'Edit this table to define identifier styles. Save the file to apply changes.',
 		'Do not use the `#` prefix for hex colors. Font size accepts any CSS value (e.g. `1.1em`, `14px`).',
@@ -164,11 +162,11 @@ function clearColorStyle(input: HTMLInputElement): void {
 
 // --- Settings tab ---
 
-export class CommentCollectorSettingTab extends PluginSettingTab {
-	plugin: CommentCollectorPlugin;
+export class AnnotationManagerSettingTab extends PluginSettingTab {
+	plugin: AnnotationManagerPlugin;
 	private pendingIdentifier = '';
 
-	constructor(app: App, plugin: CommentCollectorPlugin) {
+	constructor(app: App, plugin: AnnotationManagerPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -176,9 +174,8 @@ export class CommentCollectorSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		containerEl.createEl('h2', { text: 'Comment Collector' });
+		containerEl.createEl('h2', { text: 'Annotation Manager' });
 
-		// ── Config Source ──────────────────────────────────────────────────
 		containerEl.createEl('h3', { text: 'Config Source' });
 
 		new Setting(containerEl)
@@ -233,7 +230,7 @@ export class CommentCollectorSettingTab extends PluginSettingTab {
 
 		containerEl.createEl('p', {
 			text: 'Table columns: Identifier | Font Color | Background Color | Font Size. '
-				+ 'The # prefix is optional for hex colors. The plugin reloads automatically when the file is saved.',
+				+ 'No # prefix for hex colors. The plugin reloads automatically when the file is saved.',
 			cls: 'setting-item-description',
 		});
 
@@ -282,8 +279,24 @@ export class CommentCollectorSettingTab extends PluginSettingTab {
 	private renderIdentifierBlock(containerEl: HTMLElement, id: string): void {
 		const style = this.plugin.settings.identifierStyles[id];
 		if (!style) return;
-		const wrap = containerEl.createDiv();
+		const wrap = containerEl.createDiv('cc-identifier-block');
 		wrap.createEl('h4', { text: id });
+
+		// Live preview — updated automatically whenever any style property changes
+		const previewWrap = wrap.createEl('div', { cls: 'cc-style-preview' });
+		const previewSpan = previewWrap.createEl('span', {
+			text: 'Sample annotation text',
+			cls: 'cc-style-preview-sample',
+		});
+
+		const updatePreview = () => {
+			const s = this.plugin.settings.identifierStyles[id];
+			if (!s) return;
+			previewSpan.style.color = s.fontColor || '';
+			previewSpan.style.backgroundColor = s.backgroundColor || '';
+			previewSpan.style.fontSize = s.fontSize || '';
+		};
+		updatePreview();
 
 		new Setting(wrap)
 			.setName('Font size')
@@ -296,6 +309,7 @@ export class CommentCollectorSettingTab extends PluginSettingTab {
 						style.fontSize = v;
 						await this.plugin.saveSettings();
 						this.plugin.bumpStyleVersion();
+						updatePreview();
 					}),
 			);
 
@@ -308,6 +322,7 @@ export class CommentCollectorSettingTab extends PluginSettingTab {
 				style.fontColor = v;
 				await this.plugin.saveSettings();
 				this.plugin.bumpStyleVersion();
+				updatePreview();
 			},
 		);
 
@@ -320,6 +335,7 @@ export class CommentCollectorSettingTab extends PluginSettingTab {
 				style.backgroundColor = v;
 				await this.plugin.saveSettings();
 				this.plugin.bumpStyleVersion();
+				updatePreview();
 			},
 		);
 

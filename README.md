@@ -1,4 +1,4 @@
-# Obsidian Comment Collector
+# Annotation Manager
 
 Annotate text inline using the syntax
 ```
@@ -46,7 +46,7 @@ The sample statistic {={stats}is an unbiased estimator=} of the mean.
 
 ## Configuration options
 
-Open **Settings → Comment Collector** to configure the plugin.
+Open **Settings → Annotation Manager** to configure the plugin.
 
 ### Config source
 
@@ -76,7 +76,7 @@ When **Config file** is selected, specify a vault-relative path (default: `OccCo
 
 ## How to customize identifiers (Settings UI mode)
 
-1. Open **Settings → Comment Collector**
+1. Open **Settings → Annotation Manager**
 2. Under **Add Identifier**, enter the identifier name (e.g. `math/hot` or `stats`) and click **Add**
 3. Set the desired **Font color**, **Background color**, and/or **Font size**
 4. Changes apply immediately to all open editors and Reading View panes
@@ -103,8 +103,8 @@ Use **Expand All** / **Collapse All** to show or hide all groups at once. Indivi
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | **Show annotations sidebar**                        | Toggle the CC annotations sidebar open/closed                                                                       |
 | **Apply identifier to selection**                   | Open a picker to wrap selected text (or insert a blank annotation at cursor) with a chosen identifier               |
-| **Toggle annotation bracket/identifier visibility** | Show or hide the `{={id}` and `=}` delimiters in Live Preview and Reading View                                      |
-| **Toggle annotation bracket/identifier formatting** | Enable or disable custom colors on the bracket and identifier portion (visible in Source Mode)                      |
+| **Toggle bracket/identifier visibility** | Show or hide the `{={id}` and `=}` delimiters in Live Preview and Reading View                                      |
+| **Toggle bracket/identifier formatting** | Enable or disable custom colors on the bracket and identifier portion (visible in Source Mode)                      |
 | **Toggle text formatting**                          | Enable or disable custom colors on the annotation text content                                                      |
 
 ---
@@ -160,7 +160,7 @@ dv.table(['Note', 'Identifier', 'Annotation'], rows);
 ---
 
 ## Notes
-
+- This plugin has been tested with the built-in and Minimal themes only.
 - Annotations are parsed from raw Markdown, so they work in both Live Preview and Source Mode
 - The `{= and =}` delimiters are hidden only in Live Preview and Reading View; they are always visible in Source Mode
 - When **bracket visibility** is toggled off, annotations display as raw text in Reading View and are not styled

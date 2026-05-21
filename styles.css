@@ -132,6 +132,21 @@
 	color: var(--text-faint);
 }
 
+/* ── Settings live preview ───────────────────────────────────────────────── */
+
+.cc-style-preview {
+	padding: 8px 12px;
+	margin: 2px 0 10px;
+	background: var(--background-secondary);
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+}
+
+.cc-style-preview-sample {
+	border-radius: 2px;
+	padding: 1px 3px;
+}
+
 /* ── Identifier suggest modal ────────────────────────────────────────────── */
 
 .cc-suggest-row {

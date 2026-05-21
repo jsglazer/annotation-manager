@@ -1,7 +1,7 @@
-import { App, Editor, MarkdownView, Notice, Plugin, setIcon, SuggestModal, TFile } from 'obsidian';
+import { App, debounce, Editor, MarkdownView, Notice, Plugin, setIcon, SuggestModal, TFile } from 'obsidian';
 import {
-	CommentCollectorSettings,
-	CommentCollectorSettingTab,
+	AnnotationManagerSettings,
+	AnnotationManagerSettingTab,
 	DEFAULT_SETTINGS,
 	identifierKeyToClass,
 	parseConfigTable,
@@ -10,12 +10,12 @@ import {
 } from './settings';
 import { parseAnnotations, Annotation } from './parser';
 import { createCommentViewPlugin } from './decoration';
-import { CommentSidebarView, SIDEBAR_VIEW_TYPE } from './sidebar';
+import { AnnotationSidebarView, SIDEBAR_VIEW_TYPE } from './sidebar';
 
-const STYLE_EL_ID = 'obsidian-comment-collector-styles';
+const STYLE_EL_ID = 'annotation-manager-styles';
 
-export default class CommentCollectorPlugin extends Plugin {
-	settings: CommentCollectorSettings;
+export default class AnnotationManagerPlugin extends Plugin {
+	settings: AnnotationManagerSettings;
 	styleVersion = 0;
 	// Three independent display toggles (all ON by default)
 	syntaxHidingEnabled = true;         // hides {={id} and =} delimiters in LP / Reading View
@@ -23,19 +23,20 @@ export default class CommentCollectorPlugin extends Plugin {
 	textFormattingEnabled = true;       // applies custom color to the annotation text content
 
 	private fileAnnotations: Map<string, Annotation[]> = new Map();
+	private debouncedRefresh = debounce(() => this._refreshSidebar(), 150, true);
 
 	async onload() {
 		await this.loadSettings();
 		this.updateStyleSheet();
 
-		this.addSettingTab(new CommentCollectorSettingTab(this.app, this));
+		this.addSettingTab(new AnnotationManagerSettingTab(this.app, this));
 		this.registerEditorExtension(createCommentViewPlugin(this));
 		this.registerMarkdownPostProcessor((el) => this.processReadingView(el));
 
-		this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new CommentSidebarView(leaf, this));
+		this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new AnnotationSidebarView(leaf, this));
 
 		// Left ribbon icon
-		this.addRibbonIcon('message-square', 'Comment Collector: show annotations', () => {
+		this.addRibbonIcon('message-square', 'Annotation Manager: show annotations', () => {
 			this.toggleSidebar();
 		});
 
@@ -66,7 +67,7 @@ export default class CommentCollectorPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'toggle-syntax-hiding',
-			name: 'Toggle annotation bracket/identifier visibility',
+			name: 'Toggle bracket/identifier visibility',
 			callback: () => {
 				this.syntaxHidingEnabled = !this.syntaxHidingEnabled;
 				this.bumpStyleVersion();
@@ -76,7 +77,7 @@ export default class CommentCollectorPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'toggle-identifier-formatting',
-			name: 'Toggle annotation bracket/identifier formatting',
+			name: 'Toggle bracket/identifier formatting',
 			callback: () => {
 				this.identifierFormattingEnabled = !this.identifierFormattingEnabled;
 				this.bumpStyleVersion();
@@ -104,7 +105,7 @@ export default class CommentCollectorPlugin extends Plugin {
 			this.setupDataviewIntegration();
 			this.addRightSidebarButton();
 
-			// Open the CC sidebar in the right panel if it has never been opened
+			// Open the AM sidebar in the right panel if it has never been opened
 			// so it appears as an accessible tab
 			const leaves = this.app.workspace.getLeavesOfType(SIDEBAR_VIEW_TYPE);
 			if (leaves.length === 0) {
@@ -118,7 +119,7 @@ export default class CommentCollectorPlugin extends Plugin {
 				if (file instanceof TFile && file.extension === 'md') {
 					await this.indexFile(file);
 					this.injectDataviewMetadata(file);
-					this.refreshSidebar();
+					this.debouncedRefresh();
 					// Auto-reload config when the config file changes
 					if (this.settings.configSource === 'file' && file.path === this.settings.configFilePath) {
 						await this.reloadConfigFile();
@@ -131,7 +132,7 @@ export default class CommentCollectorPlugin extends Plugin {
 			this.app.vault.on('delete', (file) => {
 				if (file instanceof TFile) {
 					this.fileAnnotations.delete(file.path);
-					this.refreshSidebar();
+					this.debouncedRefresh();
 				}
 			}),
 		);
@@ -142,7 +143,7 @@ export default class CommentCollectorPlugin extends Plugin {
 					this.fileAnnotations.delete(oldPath);
 					await this.indexFile(file);
 					this.injectDataviewMetadata(file);
-					this.refreshSidebar();
+					this.debouncedRefresh();
 				}
 			}),
 		);
@@ -156,7 +157,7 @@ export default class CommentCollectorPlugin extends Plugin {
 		this.settings = Object.assign(
 			{},
 			DEFAULT_SETTINGS,
-			(await this.loadData()) as Partial<CommentCollectorSettings>,
+			(await this.loadData()) as Partial<AnnotationManagerSettings>,
 		);
 	}
 
@@ -169,8 +170,12 @@ export default class CommentCollectorPlugin extends Plugin {
 	}
 
 	refreshSidebar(): void {
+		this.debouncedRefresh();
+	}
+
+	private _refreshSidebar(): void {
 		this.app.workspace.getLeavesOfType(SIDEBAR_VIEW_TYPE).forEach(leaf => {
-			if (leaf.view instanceof CommentSidebarView) {
+			if (leaf.view instanceof AnnotationSidebarView) {
 				leaf.view.render();
 			}
 		});
@@ -198,7 +203,7 @@ export default class CommentCollectorPlugin extends Plugin {
 			if (rightRibbon?.containerEl) {
 				const btn = (rightRibbon.containerEl as HTMLElement).createEl('div', {
 					cls: 'side-dock-ribbon-action',
-					attr: { 'aria-label': 'Comment Collector: show annotations' },
+					attr: { 'aria-label': 'Annotation Manager: show annotations' },
 				});
 				setIcon(btn, 'message-square');
 				btn.addEventListener('click', () => this.toggleSidebar());
@@ -213,7 +218,7 @@ export default class CommentCollectorPlugin extends Plugin {
 			if (ribbonEl) {
 				const btn = ribbonEl.createEl('div', {
 					cls: 'side-dock-ribbon-action',
-					attr: { 'aria-label': 'Comment Collector: show annotations' },
+					attr: { 'aria-label': 'Annotation Manager: show annotations' },
 				});
 				setIcon(btn, 'message-square');
 				btn.addEventListener('click', () => this.toggleSidebar());
@@ -229,7 +234,7 @@ export default class CommentCollectorPlugin extends Plugin {
 			if (containerEl) {
 				const btn = containerEl.createEl('div', {
 					cls: 'cc-right-panel-btn',
-					attr: { 'aria-label': 'Comment Collector: show annotations', title: 'Comment Collector' },
+					attr: { 'aria-label': 'Annotation Manager: show annotations', title: 'Annotation Manager' },
 				});
 				setIcon(btn, 'message-square');
 				btn.addEventListener('click', () => this.toggleSidebar());
@@ -320,10 +325,9 @@ export default class CommentCollectorPlugin extends Plugin {
 	}
 
 	private async indexAllFiles() {
-		for (const file of this.app.vault.getMarkdownFiles()) {
-			await this.indexFile(file);
-		}
-		this.refreshSidebar();
+		const files = this.app.vault.getMarkdownFiles();
+		await Promise.all(files.map(f => this.indexFile(f)));
+		this._refreshSidebar();
 	}
 
 	private async indexFile(file: TFile) {
@@ -412,7 +416,7 @@ export default class CommentCollectorPlugin extends Plugin {
 class IdentifierSuggestModal extends SuggestModal<string> {
 	constructor(
 		app: App,
-		private plugin: CommentCollectorPlugin,
+		private plugin: AnnotationManagerPlugin,
 		private onChoose: (id: string) => void,
 	) {
 		super(app);

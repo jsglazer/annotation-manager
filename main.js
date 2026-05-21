@@ -19,7 +19,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/main.ts
 var main_exports = {};
 __export(main_exports, {
-  default: () => CommentCollectorPlugin
+  default: () => AnnotationManagerPlugin
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian3 = require("obsidian");
@@ -65,6 +65,9 @@ function normalizeHex(value) {
   if (/^[0-9a-fA-F]{6}$/.test(v)) return "#" + v;
   return "";
 }
+function stripHash(hex) {
+  return hex.startsWith("#") ? hex.slice(1) : hex;
+}
 function parseConfigTable(content) {
   const styles = {};
   const lines = content.split("\n");
@@ -93,12 +96,9 @@ function parseConfigTable(content) {
   }
   return styles;
 }
-function stripHash(hex) {
-  return hex.startsWith("#") ? hex.slice(1) : hex;
-}
 function renderConfigTable(styles) {
   const header = [
-    "# Comment Collector Config",
+    "# Annotation Manager Config",
     "",
     "Edit this table to define identifier styles. Save the file to apply changes.",
     "Do not use the `#` prefix for hex colors. Font size accepts any CSS value (e.g. `1.1em`, `14px`).",
@@ -127,7 +127,7 @@ function clearColorStyle(input) {
   input.style.backgroundColor = "";
   input.style.color = "";
 }
-var CommentCollectorSettingTab = class extends import_obsidian.PluginSettingTab {
+var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.pendingIdentifier = "";
@@ -136,7 +136,7 @@ var CommentCollectorSettingTab = class extends import_obsidian.PluginSettingTab 
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "Comment Collector" });
+    containerEl.createEl("h2", { text: "Annotation Manager" });
     containerEl.createEl("h3", { text: "Config Source" });
     new import_obsidian.Setting(containerEl).setName("Identifier style source").setDesc("Define styles in this UI, or read them from a Markdown table in your vault").addDropdown(
       (dd) => dd.addOption("settings", "Settings UI").addOption("file", "Config file").setValue(this.plugin.settings.configSource).onChange(async (v) => {
@@ -168,7 +168,7 @@ var CommentCollectorSettingTab = class extends import_obsidian.PluginSettingTab 
       })
     );
     containerEl.createEl("p", {
-      text: "Table columns: Identifier | Font Color | Background Color | Font Size. The # prefix is optional for hex colors. The plugin reloads automatically when the file is saved.",
+      text: "Table columns: Identifier | Font Color | Background Color | Font Size. No # prefix for hex colors. The plugin reloads automatically when the file is saved.",
       cls: "setting-item-description"
     });
     const ids = Object.keys(this.plugin.settings.identifierStyles).sort();
@@ -204,13 +204,27 @@ var CommentCollectorSettingTab = class extends import_obsidian.PluginSettingTab 
   renderIdentifierBlock(containerEl, id) {
     const style = this.plugin.settings.identifierStyles[id];
     if (!style) return;
-    const wrap = containerEl.createDiv();
+    const wrap = containerEl.createDiv("cc-identifier-block");
     wrap.createEl("h4", { text: id });
+    const previewWrap = wrap.createEl("div", { cls: "cc-style-preview" });
+    const previewSpan = previewWrap.createEl("span", {
+      text: "Sample annotation text",
+      cls: "cc-style-preview-sample"
+    });
+    const updatePreview = () => {
+      const s = this.plugin.settings.identifierStyles[id];
+      if (!s) return;
+      previewSpan.style.color = s.fontColor || "";
+      previewSpan.style.backgroundColor = s.backgroundColor || "";
+      previewSpan.style.fontSize = s.fontSize || "";
+    };
+    updatePreview();
     new import_obsidian.Setting(wrap).setName("Font size").setDesc("CSS value, e.g. 14px or 1.2em \u2014 leave blank to inherit").addText(
       (t) => t.setPlaceholder("inherit").setValue(style.fontSize).onChange(async (v) => {
         style.fontSize = v;
         await this.plugin.saveSettings();
         this.plugin.bumpStyleVersion();
+        updatePreview();
       })
     );
     this.renderColorSetting(
@@ -222,6 +236,7 @@ var CommentCollectorSettingTab = class extends import_obsidian.PluginSettingTab 
         style.fontColor = v;
         await this.plugin.saveSettings();
         this.plugin.bumpStyleVersion();
+        updatePreview();
       }
     );
     this.renderColorSetting(
@@ -233,6 +248,7 @@ var CommentCollectorSettingTab = class extends import_obsidian.PluginSettingTab 
         style.backgroundColor = v;
         await this.plugin.saveSettings();
         this.plugin.bumpStyleVersion();
+        updatePreview();
       }
     );
     new import_obsidian.Setting(wrap).addButton(
@@ -442,11 +458,11 @@ function createCommentViewPlugin(plugin) {
 
 // src/sidebar.ts
 var import_obsidian2 = require("obsidian");
-var SIDEBAR_VIEW_TYPE = "comment-collector-sidebar";
-var CommentSidebarView = class extends import_obsidian2.ItemView {
+var SIDEBAR_VIEW_TYPE = "annotation-manager-sidebar";
+var AnnotationSidebarView = class extends import_obsidian2.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
-    this.collapsedSections = /* @__PURE__ */ new Set();
+    this.expandedSections = /* @__PURE__ */ new Set();
     this.plugin = plugin;
   }
   getViewType() {
@@ -493,9 +509,9 @@ var CommentSidebarView = class extends import_obsidian2.ItemView {
       const entries = byId.get(key);
       const section = root.createDiv("cc-sidebar-section");
       const header = section.createDiv("cc-sidebar-header");
-      const isCollapsed = this.collapsedSections.has(key);
+      const isExpanded = this.expandedSections.has(key);
       const arrowEl = header.createEl("span", {
-        text: isCollapsed ? "\u25B8" : "\u25BE",
+        text: isExpanded ? "\u25BE" : "\u25B8",
         cls: "cc-sidebar-arrow"
       });
       header.createEl("span", {
@@ -507,18 +523,18 @@ var CommentSidebarView = class extends import_obsidian2.ItemView {
         cls: "cc-sidebar-count"
       });
       const itemsEl = section.createDiv("cc-sidebar-items");
-      if (isCollapsed) itemsEl.style.display = "none";
+      if (!isExpanded) itemsEl.style.display = "none";
       sectionMeta.push({ key, itemsEl, arrowEl });
       header.addEventListener("click", () => {
-        const nowCollapsed = !this.collapsedSections.has(key);
-        if (nowCollapsed) {
-          this.collapsedSections.add(key);
-          itemsEl.style.display = "none";
-          arrowEl.textContent = "\u25B8";
-        } else {
-          this.collapsedSections.delete(key);
+        const nowExpanded = !this.expandedSections.has(key);
+        if (nowExpanded) {
+          this.expandedSections.add(key);
           itemsEl.style.display = "";
           arrowEl.textContent = "\u25BE";
+        } else {
+          this.expandedSections.delete(key);
+          itemsEl.style.display = "none";
+          arrowEl.textContent = "\u25B8";
         }
       });
       for (const entry of entries) {
@@ -549,14 +565,14 @@ var CommentSidebarView = class extends import_obsidian2.ItemView {
     }
     expandAllBtn.addEventListener("click", () => {
       for (const { key, itemsEl, arrowEl } of sectionMeta) {
-        this.collapsedSections.delete(key);
+        this.expandedSections.add(key);
         itemsEl.style.display = "";
         arrowEl.textContent = "\u25BE";
       }
     });
     collapseAllBtn.addEventListener("click", () => {
       for (const { key, itemsEl, arrowEl } of sectionMeta) {
-        this.collapsedSections.add(key);
+        this.expandedSections.delete(key);
         itemsEl.style.display = "none";
         arrowEl.textContent = "\u25B8";
       }
@@ -565,8 +581,8 @@ var CommentSidebarView = class extends import_obsidian2.ItemView {
 };
 
 // src/main.ts
-var STYLE_EL_ID = "obsidian-comment-collector-styles";
-var CommentCollectorPlugin = class extends import_obsidian3.Plugin {
+var STYLE_EL_ID = "annotation-manager-styles";
+var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
   constructor() {
     super(...arguments);
     this.styleVersion = 0;
@@ -578,15 +594,16 @@ var CommentCollectorPlugin = class extends import_obsidian3.Plugin {
     this.textFormattingEnabled = true;
     // applies custom color to the annotation text content
     this.fileAnnotations = /* @__PURE__ */ new Map();
+    this.debouncedRefresh = (0, import_obsidian3.debounce)(() => this._refreshSidebar(), 150, true);
   }
   async onload() {
     await this.loadSettings();
     this.updateStyleSheet();
-    this.addSettingTab(new CommentCollectorSettingTab(this.app, this));
+    this.addSettingTab(new AnnotationManagerSettingTab(this.app, this));
     this.registerEditorExtension(createCommentViewPlugin(this));
     this.registerMarkdownPostProcessor((el) => this.processReadingView(el));
-    this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new CommentSidebarView(leaf, this));
-    this.addRibbonIcon("message-square", "Comment Collector: show annotations", () => {
+    this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new AnnotationSidebarView(leaf, this));
+    this.addRibbonIcon("message-square", "Annotation Manager: show annotations", () => {
       this.toggleSidebar();
     });
     this.addCommand({
@@ -613,7 +630,7 @@ var CommentCollectorPlugin = class extends import_obsidian3.Plugin {
     });
     this.addCommand({
       id: "toggle-syntax-hiding",
-      name: "Toggle annotation bracket/identifier visibility",
+      name: "Toggle bracket/identifier visibility",
       callback: () => {
         this.syntaxHidingEnabled = !this.syntaxHidingEnabled;
         this.bumpStyleVersion();
@@ -622,7 +639,7 @@ var CommentCollectorPlugin = class extends import_obsidian3.Plugin {
     });
     this.addCommand({
       id: "toggle-identifier-formatting",
-      name: "Toggle annotation bracket/identifier formatting",
+      name: "Toggle bracket/identifier formatting",
       callback: () => {
         this.identifierFormattingEnabled = !this.identifierFormattingEnabled;
         this.bumpStyleVersion();
@@ -656,7 +673,7 @@ var CommentCollectorPlugin = class extends import_obsidian3.Plugin {
         if (file instanceof import_obsidian3.TFile && file.extension === "md") {
           await this.indexFile(file);
           this.injectDataviewMetadata(file);
-          this.refreshSidebar();
+          this.debouncedRefresh();
           if (this.settings.configSource === "file" && file.path === this.settings.configFilePath) {
             await this.reloadConfigFile();
           }
@@ -667,7 +684,7 @@ var CommentCollectorPlugin = class extends import_obsidian3.Plugin {
       this.app.vault.on("delete", (file) => {
         if (file instanceof import_obsidian3.TFile) {
           this.fileAnnotations.delete(file.path);
-          this.refreshSidebar();
+          this.debouncedRefresh();
         }
       })
     );
@@ -677,7 +694,7 @@ var CommentCollectorPlugin = class extends import_obsidian3.Plugin {
           this.fileAnnotations.delete(oldPath);
           await this.indexFile(file);
           this.injectDataviewMetadata(file);
-          this.refreshSidebar();
+          this.debouncedRefresh();
         }
       })
     );
@@ -700,8 +717,11 @@ var CommentCollectorPlugin = class extends import_obsidian3.Plugin {
     return this.fileAnnotations;
   }
   refreshSidebar() {
+    this.debouncedRefresh();
+  }
+  _refreshSidebar() {
     this.app.workspace.getLeavesOfType(SIDEBAR_VIEW_TYPE).forEach((leaf) => {
-      if (leaf.view instanceof CommentSidebarView) {
+      if (leaf.view instanceof AnnotationSidebarView) {
         leaf.view.render();
       }
     });
@@ -726,7 +746,7 @@ var CommentCollectorPlugin = class extends import_obsidian3.Plugin {
       if (rightRibbon == null ? void 0 : rightRibbon.containerEl) {
         const btn = rightRibbon.containerEl.createEl("div", {
           cls: "side-dock-ribbon-action",
-          attr: { "aria-label": "Comment Collector: show annotations" }
+          attr: { "aria-label": "Annotation Manager: show annotations" }
         });
         (0, import_obsidian3.setIcon)(btn, "message-square");
         btn.addEventListener("click", () => this.toggleSidebar());
@@ -740,7 +760,7 @@ var CommentCollectorPlugin = class extends import_obsidian3.Plugin {
       if (ribbonEl) {
         const btn = ribbonEl.createEl("div", {
           cls: "side-dock-ribbon-action",
-          attr: { "aria-label": "Comment Collector: show annotations" }
+          attr: { "aria-label": "Annotation Manager: show annotations" }
         });
         (0, import_obsidian3.setIcon)(btn, "message-square");
         btn.addEventListener("click", () => this.toggleSidebar());
@@ -755,7 +775,7 @@ var CommentCollectorPlugin = class extends import_obsidian3.Plugin {
       if (containerEl) {
         const btn = containerEl.createEl("div", {
           cls: "cc-right-panel-btn",
-          attr: { "aria-label": "Comment Collector: show annotations", title: "Comment Collector" }
+          attr: { "aria-label": "Annotation Manager: show annotations", title: "Annotation Manager" }
         });
         (0, import_obsidian3.setIcon)(btn, "message-square");
         btn.addEventListener("click", () => this.toggleSidebar());
@@ -829,10 +849,9 @@ var CommentCollectorPlugin = class extends import_obsidian3.Plugin {
     el.innerHTML = html;
   }
   async indexAllFiles() {
-    for (const file of this.app.vault.getMarkdownFiles()) {
-      await this.indexFile(file);
-    }
-    this.refreshSidebar();
+    const files = this.app.vault.getMarkdownFiles();
+    await Promise.all(files.map((f) => this.indexFile(f)));
+    this._refreshSidebar();
   }
   async indexFile(file) {
     const content = await this.app.vault.read(file);
