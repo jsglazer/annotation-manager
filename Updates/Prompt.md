@@ -1,4 +1,4 @@
-Locally you have access only to the files and folders /Users/josh/VaultDEV.
+Locally you have access only to the files and folders /Users/<deleted>/VaultDEV.
 
 Remember not to start building anything until you check if the required core and community plugins are installed.
 
@@ -17,7 +17,7 @@ The plugin should do the following things:
 - I created a plugin folder and installed 
 - Directions for creating an Obsidian plugin are here: https://docs.obsidian.md/Plugins/Getting+started/Build+a+plugin
 
-- You can find an example plugin at /Users/josh/VaultDEV/.obsidian/plugins/obsidian-sample-plugin; npm is already installed there
+- You can find an example plugin at /Users/<deleted>/VaultDEV/.obsidian/plugins/obsidian-sample-plugin; npm is already installed there
 
 What information do you need to get started?
 Do you want examples of plugin files?
