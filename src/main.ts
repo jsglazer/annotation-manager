@@ -449,7 +449,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 		if (annotations.length > 0) {
 			page.fields.set(
 				'cc',
-				annotations.map(a => ({ parent: a.parent, child: a.child, text: a.text })),
+				annotations.map(a => ({ parent: a.parent, child: a.child, text: a.text, line: a.line })),
 			);
 		} else {
 			page.fields.delete('cc');
