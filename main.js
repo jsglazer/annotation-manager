@@ -176,7 +176,7 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     const infoPanel = containerEl.createDiv({ cls: "cc-info-panel" });
     const p1 = infoPanel.createEl("p");
     p1.appendText("If you encounter errors or have questions, please submit an Issue on the ");
-    p1.createEl("a", { text: "GitHub page", href: "https://github.com/jsglazer/annotation-manager/issues", attr: { target: "_blank", rel: "noopener" } });
+    p1.createEl("a", { text: "GitHub page", href: "https://github.com/jsglazer/annotation-manager", attr: { target: "_blank", rel: "noopener" } });
     p1.appendText(".");
     const p2 = infoPanel.createEl("p");
     p2.appendText("If you like this plugin\u2026thank Claude, who wrote it all! To see how I made this plugin without coding a single line, see the ");
@@ -653,6 +653,7 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
     // applies custom color to the bracket+identifier portion
     this.textFormattingEnabled = true;
     // applies custom color to the annotation text content
+    this.lastUsedIdentifier = null;
     this.fileAnnotations = /* @__PURE__ */ new Map();
     this.debouncedRefresh = (0, import_obsidian3.debounce)(() => this._refreshSidebar(), 150, true);
     this.debouncedReloadConfig = (0, import_obsidian3.debounce)(() => {
@@ -680,6 +681,7 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
       name: "Apply identifier to selection",
       editorCallback: (editor) => {
         new IdentifierSuggestModal(this.app, this, (id) => {
+          this.lastUsedIdentifier = id;
           const selected = editor.getSelection();
           if (selected) {
             editor.replaceSelection(`{={${id}}${selected}=}`);
@@ -690,6 +692,26 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
             editor.setCursor({ line: cursor.line, ch: cursor.ch + snippet.length - 2 });
           }
         }).open();
+      }
+    });
+    this.addCommand({
+      id: "apply-last-identifier",
+      name: "Apply last identifier to selection",
+      editorCallback: (editor) => {
+        const id = this.lastUsedIdentifier;
+        if (!id) {
+          new import_obsidian3.Notice('No identifier has been used yet. Use "Apply identifier to selection" first.');
+          return;
+        }
+        const selected = editor.getSelection();
+        if (selected) {
+          editor.replaceSelection(`{={${id}}${selected}=}`);
+        } else {
+          const cursor = editor.getCursor();
+          const snippet = `{={${id}}=}`;
+          editor.replaceRange(snippet, cursor);
+          editor.setCursor({ line: cursor.line, ch: cursor.ch + snippet.length - 2 });
+        }
       }
     });
     this.addCommand({

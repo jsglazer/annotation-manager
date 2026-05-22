@@ -223,7 +223,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		const infoPanel = containerEl.createDiv({ cls: 'cc-info-panel' });
 		const p1 = infoPanel.createEl('p');
 		p1.appendText('If you encounter errors or have questions, please submit an Issue on the ');
-		p1.createEl('a', { text: 'GitHub page', href: 'https://github.com/jsglazer/annotation-manager/issues', attr: { target: '_blank', rel: 'noopener' } });
+		p1.createEl('a', { text: 'GitHub page', href: 'https://github.com/jsglazer/annotation-manager', attr: { target: '_blank', rel: 'noopener' } });
 		p1.appendText('.');
 		const p2 = infoPanel.createEl('p');
 		p2.appendText('If you like this plugin…thank Claude, who wrote it all! To see how I made this plugin without coding a single line, see the ');

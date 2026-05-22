@@ -23,6 +23,8 @@ export default class AnnotationManagerPlugin extends Plugin {
 	identifierFormattingEnabled = true; // applies custom color to the bracket+identifier portion
 	textFormattingEnabled = true;       // applies custom color to the annotation text content
 
+	lastUsedIdentifier: string | null = null;
+
 	private fileAnnotations: Map<string, Annotation[]> = new Map();
 	private debouncedRefresh = debounce(() => this._refreshSidebar(), 150, true);
 	private debouncedReloadConfig = debounce(() => { void this.reloadConfigFile(); }, 3000, true);
@@ -54,6 +56,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 			name: 'Apply identifier to selection',
 			editorCallback: (editor: Editor) => {
 				new IdentifierSuggestModal(this.app, this, (id) => {
+					this.lastUsedIdentifier = id;
 					const selected = editor.getSelection();
 					if (selected) {
 						editor.replaceSelection(`{={${id}}${selected}=}`);
@@ -65,6 +68,27 @@ export default class AnnotationManagerPlugin extends Plugin {
 						editor.setCursor({ line: cursor.line, ch: cursor.ch + snippet.length - 2 });
 					}
 				}).open();
+			},
+		});
+
+		this.addCommand({
+			id: 'apply-last-identifier',
+			name: 'Apply last identifier to selection',
+			editorCallback: (editor: Editor) => {
+				const id = this.lastUsedIdentifier;
+				if (!id) {
+					new Notice('No identifier has been used yet. Use "Apply identifier to selection" first.');
+					return;
+				}
+				const selected = editor.getSelection();
+				if (selected) {
+					editor.replaceSelection(`{={${id}}${selected}=}`);
+				} else {
+					const cursor = editor.getCursor();
+					const snippet = `{={${id}}=}`;
+					editor.replaceRange(snippet, cursor);
+					editor.setCursor({ line: cursor.line, ch: cursor.ch + snippet.length - 2 });
+				}
 			},
 		});
 
