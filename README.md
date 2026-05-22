@@ -8,6 +8,7 @@ Then view and navigate all annotations from a unified sidebar. Annotations can b
 
 ![Source](text_source.png)
 ![Preview](text_preview.png)
+![DataviewJS query](dvjs.png)
 
 ---
 
@@ -150,7 +151,7 @@ function matches(ann, t) {
 }
 
 const terms = targets.map(t => t.child ? `${t.parent}/${t.child}` : t.parent);
-dv.header(2, 'Annotation for ' + terms.join(' and '));
+dv.header(2, 'Annotations for ' + terms.join(' and '));
 
 function lineLink(filePath, line) {
   const el = document.createElement('a');
