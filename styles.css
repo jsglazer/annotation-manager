@@ -4,18 +4,10 @@
 	padding: 0 1px;
 }
 
-/* Hidden brackets in Live Preview — mark-based to avoid conflicts with CM widget decorations */
-.cc-hide {
-	font-size: 0 !important;
-	color: transparent !important;
-}
-
-/* Force ALL CM6 syntax token spans (cm-link, cm-bracket, cm-strong…) that land inside
-   one of our color marks to inherit our inline color, regardless of their own CSS class
-   specificity. The 4-class chain beats any typical Obsidian syntax-highlight rule. */
-.cm-editor .cm-content .cm-line .cc-annotation-editor * {
-	color: inherit !important;
-	background-color: transparent !important;
+/* Hidden brackets in Live Preview — 4-class chain beats typical Obsidian token specificity */
+.cm-editor .cm-content .cm-line .cc-hide {
+	font-size: 0;
+	color: transparent;
 }
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
