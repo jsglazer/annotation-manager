@@ -6,6 +6,9 @@ Annotate text inline using the syntax
 ```
 Then view and navigate all annotations from a unified sidebar. Annotations can be styled with custom colors and font sizes, and are exposed to Dataview as structured metadata.
 
+![Source](text_source.png)
+![Preview](text_preview.png)
+
 ---
 
 ## What it does
