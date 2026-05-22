@@ -8,6 +8,7 @@ Then view and navigate all annotations from a unified sidebar. Annotations can b
 
 ![Source](text_source.png)
 ![Preview](text_preview.png)
+![DataviewJS query](dvjs.png)
 
 ---
 
@@ -117,10 +118,11 @@ Use **Expand All** / **Collapse All** to show or hide all groups at once. Indivi
 
 When the Dataview plugin is enabled, each note gets a `cc` field containing an array of annotation objects — one per annotation found in that note.
 
-Each object has three properties:
+Each object has four properties:
 - `parent` — the parent part of the identifier (e.g. `math`)
 - `child` — the child part (e.g. `hot`), or an empty string if none
 - `text` — the annotation content
+- `line` — the 1-based line number where the annotation appears in the file
 
 ### Example — Dataview (DQL)
 
@@ -135,7 +137,7 @@ GROUP BY file.link AS File
 ```
 ### Example — DataviewJS
 
-Show all `math/hot` and `stats` annotations across the vault as a table:
+Show all `math/hot` and `stats` annotations across the vault as a table, with a header, clickable line numbers, and sorted by Note → Identifier → Line → Annotation:
 
 ```javascript
 dataviewjs
@@ -148,17 +150,62 @@ function matches(ann, t) {
   return ann.parent === t.parent && ann.child === t.child;
 }
 
+const terms = targets.map(t => t.child ? `${t.parent}/${t.child}` : t.parent);
+dv.header(2, 'Annotations for ' + terms.join(' and '));
+
+function lineLink(filePath, line) {
+  const el = document.createElement('a');
+  el.textContent = String(line);
+  el.href = '#';
+  el.classList.add('internal-link');
+  el.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const file = app.vault.getAbstractFileByPath(filePath);
+    if (!file) return;
+    const leaf = app.workspace.getLeaf(false);
+    await leaf.openFile(file);
+    const view = leaf.view;
+    if (view?.editor) {
+      const pos = { line: line - 1, ch: 0 };
+      view.editor.setCursor(pos);
+      view.editor.scrollIntoView({ from: pos, to: pos }, true);
+    }
+  });
+  return el;
+}
+
 const rows = [];
 for (const page of dv.pages().where(p => p.cc)) {
   for (const ann of page.cc) {
     if (targets.some(t => matches(ann, t))) {
       const id = ann.child ? `${ann.parent}/${ann.child}` : ann.parent;
-      rows.push([page.file.link, id, ann.text]);
+      rows.push({
+        note: page.file.name,
+        link: page.file.link,
+        filePath: page.file.path,
+        id,
+        line: ann.line,
+        text: ann.text,
+      });
     }
   }
 }
 
-dv.table(['Note', 'Identifier', 'Annotation'], rows);
+rows.sort((a, b) => {
+  if (a.note !== b.note) return a.note.localeCompare(b.note);
+  if (a.id !== b.id) return a.id.localeCompare(b.id);
+  if (a.line !== b.line) {
+    if (a.line == null) return 1;
+    if (b.line == null) return -1;
+    return a.line - b.line;
+  }
+  return String(a.text).localeCompare(String(b.text));
+});
+
+dv.table(
+  ['Note', 'Identifier', 'Line', 'Annotation'],
+  rows.map(r => [r.link, r.id, r.line ? lineLink(r.filePath, r.line) : '', r.text])
+);
 ```
 
 ---
