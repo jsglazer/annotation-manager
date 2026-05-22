@@ -1,0 +1,214 @@
+.cc-annotation {
+	cursor: text;
+	border-radius: 2px;
+	padding: 0 1px;
+}
+
+/* Hidden brackets in Live Preview — mark-based to avoid conflicts with CM widget decorations */
+.cc-hide {
+	font-size: 0 !important;
+	color: transparent !important;
+}
+
+/* Force ALL CM6 syntax token spans (cm-link, cm-bracket, cm-strong…) that land inside
+   one of our color marks to inherit our inline color, regardless of their own CSS class
+   specificity. The 4-class chain beats any typical Obsidian syntax-highlight rule. */
+.cm-editor .cm-content .cm-line .cc-annotation-editor * {
+	color: inherit !important;
+	background-color: transparent !important;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+
+.cc-sidebar {
+	padding: 8px 6px;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+}
+
+.cc-sidebar-empty {
+	color: var(--text-muted);
+	font-style: italic;
+	padding: 8px 4px;
+}
+
+.cc-sidebar-controls {
+	display: flex;
+	gap: 6px;
+	padding: 4px 2px 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	margin-bottom: 6px;
+}
+
+.cc-sidebar-ctrl-btn {
+	font-size: 0.75em;
+	padding: 2px 8px;
+	border-radius: 4px;
+	background: var(--background-modifier-hover);
+	border: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.cc-sidebar-ctrl-btn:hover {
+	background: var(--background-modifier-border);
+	color: var(--text-normal);
+}
+
+.cc-sidebar-section {
+	margin-bottom: 6px;
+}
+
+.cc-sidebar-header {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	padding: 3px 4px;
+	border-radius: 4px;
+	cursor: pointer;
+	user-select: none;
+}
+
+.cc-sidebar-header:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.cc-sidebar-arrow {
+	font-size: 0.7em;
+	color: var(--text-muted);
+	flex-shrink: 0;
+	width: 10px;
+}
+
+.cc-sidebar-id {
+	font-size: 0.8em;
+	font-weight: 600;
+	color: var(--text-accent);
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cc-sidebar-count {
+	font-size: 0.7em;
+	color: var(--text-faint);
+	background: var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 0 5px;
+	flex-shrink: 0;
+}
+
+.cc-sidebar-items {
+	padding-left: 14px;
+}
+
+.cc-sidebar-item {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding: 4px 6px;
+	border-radius: 4px;
+	cursor: pointer;
+	margin-bottom: 1px;
+}
+
+.cc-sidebar-item:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.cc-sidebar-text {
+	font-size: 0.88em;
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.cc-sidebar-loc {
+	font-size: 0.72em;
+	color: var(--text-faint);
+}
+
+/* ── Settings info panel ─────────────────────────────────────────────────── */
+
+.cc-info-panel {
+	margin: 0 0 16px;
+	padding: 10px 14px;
+	background: var(--background-secondary);
+	border-left: 3px solid var(--interactive-accent);
+	border-radius: 4px;
+	font-size: 0.88em;
+	color: var(--text-muted);
+}
+
+.cc-info-panel p {
+	margin: 0 0 4px;
+}
+
+.cc-info-panel p:last-child {
+	margin-bottom: 0;
+}
+
+/* ── Settings live preview ───────────────────────────────────────────────── */
+
+.cc-style-preview {
+	padding: 8px 12px;
+	margin: 2px 0 10px;
+	background: var(--background-secondary);
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+}
+
+.cc-style-preview-sample {
+	border-radius: 2px;
+	padding: 1px 3px;
+}
+
+.cc-file-preview-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-top: 4px;
+}
+
+.cc-file-preview-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.cc-file-preview-id {
+	font-size: 0.85em;
+	font-weight: 600;
+	color: var(--text-accent);
+	min-width: 120px;
+}
+
+.cc-file-preview-sample {
+	border-radius: 2px;
+	padding: 1px 5px;
+	font-size: 0.85em;
+}
+
+/* ── Identifier suggest modal ────────────────────────────────────────────── */
+
+.cc-suggest-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.cc-suggest-id {
+	flex: 1;
+}
+
+.cc-suggest-badge {
+	font-size: 0.72em;
+	padding: 1px 5px;
+	border-radius: 4px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
