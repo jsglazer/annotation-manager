@@ -20,6 +20,21 @@ Then view and navigate all annotations from a unified sidebar. Annotations can b
 - **Custom styling** — assign font color, background color, and font size to any identifier or wildcard pattern
 - **Dataview integration** — annotations are exposed as a `cc` field on each note's page object
 - **Config file support** — define identifier styles in a Markdown table in your vault instead of the settings UI
+- **Citation insertion** — insert bibliographic citation keys from `.bib` files (BibTeX format) immediately after an annotation
+
+---
+
+## Citation syntax
+
+Citations are inserted immediately after an annotation closing tag and reference a BibTeX entry key:
+
+```
+{={math/hot}every non-vertical line=}{=/{alderdiceWhatFuturePeace}/=}
+```
+
+- The citation marker is `{=/{key}/=}` where `key` is the BibTeX entry key (e.g. `alderdiceWhatFuturePeace`)
+- Use the **Insert citation** command to pick a `.bib` file and key from a searchable list
+- If the cursor is placed immediately after a closing `=}`, the `.bib` file associated with that annotation style is listed first
 
 ---
 
@@ -52,6 +67,17 @@ The sample statistic {={stats}is an unbiased estimator=} of the mean.
 
 Open **Settings → Annotation Manager** to configure the plugin.
 
+### Bibliography
+
+| Option | Description |
+| --- | --- |
+| **Bib files folder** | Vault-relative path to the folder containing `.bib` files (e.g. `Meta/Bibs`). **Required** before the Insert Citation command can be used. |
+| **Show .bib files in file browser** | When enabled (default), the plugin enables Obsidian's **Show all file types** setting so `.bib` files appear in the file explorer. When disabled, `.bib` files are hidden from the file explorer via CSS. |
+
+> [!warning] When "Show .bib files in file browser" is enabled, the plugin programmatically sets Obsidian's **Show all file types** option to `on`. This affects all non-native file types in your vault, not just `.bib` files. You may need to reopen the file explorer or restart Obsidian for the change to take effect.
+
+Each identifier style can also have an associated `.bib` file (e.g. `ToRead.bib`). When you invoke **Insert citation** with the cursor immediately after an annotation that uses that style, its linked `.bib` file appears at the top of the file picker.
+
 ### Config source
 
 | Option | Description |
@@ -64,17 +90,18 @@ When **Config file** is selected, specify a vault-relative path (default: `OccCo
 ### Config file table format
 
 ```markdown
-| Identifier | Font Color | Background Color | Font Size | Example |
-| ---------- | ---------- | ---------------- | --------- | ------- |
-| math/hot   | ff6b6b     | fff0f0           | 1.1em     | <span style="color: #ff6b6b; background-color: #fff0f0; font-size: 1.1em">Example</span> |
-| math/*     | 4ecdc4     |                  |           | <span style="color: #4ecdc4">Example</span> |
-| stats      | ffd93d     | fffbe6           |           | <span style="color: #ffd93d; background-color: #fffbe6">Example</span> |
+| Identifier | Font Color | Background Color | Font Size | Bib File   | Example |
+| ---------- | ---------- | ---------------- | --------- | ---------- | ------- |
+| math/hot   | ff6b6b     | fff0f0           | 1.1em     | Math.bib   | <span style="color: #ff6b6b; background-color: #fff0f0; font-size: 1.1em">Example</span> |
+| math/*     | 4ecdc4     |                  |           |            | <span style="color: #4ecdc4">Example</span> |
+| stats      | ffd93d     | fffbe6           |           | ToRead.bib | <span style="color: #ffd93d; background-color: #fffbe6">Example</span> |
 ```
 
-- Column order must match: Identifier, Font Color, Background Color, Font Size, Example
+- Column order must match: Identifier, Font Color, Background Color, Font Size, Bib File, Example
 - Do not use the `#` prefix for hex colors (i.e. only `ff6b6b` is accepted)
 - Leave a cell blank to inherit the default value
 - Font size accepts any CSS value: `1.1em`, `14px`, `0.9rem`, etc.
+- **Bib File**: optional `.bib` filename (just the filename, e.g. `ToRead.bib`) to associate with this identifier
 - The **Example** column is auto-generated when you use **Create / update config file** — it renders a styled preview of each identifier directly in the table
 
 ---
@@ -108,6 +135,7 @@ Use **Expand All** / **Collapse All** to show or hide all groups at once. Indivi
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | **Show annotations sidebar**                        | Toggle the CC annotations sidebar open/closed                                                                       |
 | **Apply identifier to selection**                   | Open a picker to wrap selected text (or insert a blank annotation at cursor) with a chosen identifier               |
+| **Insert citation**                                 | Insert a BibTeX citation key after an annotation. Pick a `.bib` file then a citation key from a searchable list. If the cursor is right after an annotation, its linked `.bib` file appears first. |
 | **Toggle bracket/identifier visibility** | Show or hide the `{={id}` and `=}` delimiters in Live Preview and Reading View                                      |
 | **Toggle bracket/identifier formatting** | Enable or disable custom colors on the bracket and identifier portion (visible in Source Mode)                      |
 | **Toggle text formatting**                          | Enable or disable custom colors on the annotation text content                                                      |
@@ -118,11 +146,12 @@ Use **Expand All** / **Collapse All** to show or hide all groups at once. Indivi
 
 When the Dataview plugin is enabled, each note gets a `cc` field containing an array of annotation objects — one per annotation found in that note.
 
-Each object has four properties:
+Each object has five properties:
 - `parent` — the parent part of the identifier (e.g. `math`)
 - `child` — the child part (e.g. `hot`), or an empty string if none
 - `text` — the annotation content
 - `line` — the 1-based line number where the annotation appears in the file
+- `citation` — the BibTeX key from a `{=/{key}/=}` marker immediately following the annotation, or an empty string
 
 ### Example — Dataview (DQL)
 
@@ -137,7 +166,7 @@ GROUP BY file.link AS File
 ```
 ### Example — DataviewJS
 
-Show all `math/hot` and `stats` annotations across the vault as a table, with a header, clickable line numbers, and sorted by Note → Identifier → Line → Annotation:
+Show all `math/hot` and `stats` annotations across the vault as a table, with a header, clickable line numbers, citation keys, and sorted by Note → Identifier → Line → Annotation:
 
 ```javascript
 dataviewjs
@@ -147,10 +176,10 @@ const targets = [
 ];
 
 function matches(ann, t) {
-  return ann.parent === t.parent && ann.child === t.child;
+  return String(ann.parent) === t.parent && String(ann.child) === t.child;
 }
 
-const terms = targets.map(t => t.child ? `${t.parent}/${t.child}` : t.parent);
+const terms = targets.map(t => t.child ? (t.parent + '/' + t.child) : t.parent);
 dv.header(2, 'Annotations for ' + terms.join(' and '));
 
 function lineLink(filePath, line) {
@@ -176,9 +205,16 @@ function lineLink(filePath, line) {
 
 const rows = [];
 for (const page of dv.pages().where(p => p.cc)) {
-  for (const ann of page.cc) {
+  for (const rawAnn of page.cc) {
+    const ann = {
+      parent: String(rawAnn.parent ?? ''),
+      child: String(rawAnn.child ?? ''),
+      text: String(rawAnn.text ?? ''),
+      line: rawAnn.line ? Number(rawAnn.line) : null,
+      citation: String(rawAnn.citation ?? ''),
+    };
     if (targets.some(t => matches(ann, t))) {
-      const id = ann.child ? `${ann.parent}/${ann.child}` : ann.parent;
+      const id = ann.child ? (ann.parent + '/' + ann.child) : ann.parent;
       rows.push({
         note: page.file.name,
         link: page.file.link,
@@ -186,6 +222,7 @@ for (const page of dv.pages().where(p => p.cc)) {
         id,
         line: ann.line,
         text: ann.text,
+        citation: ann.citation,
       });
     }
   }
@@ -203,9 +240,31 @@ rows.sort((a, b) => {
 });
 
 dv.table(
-  ['Note', 'Identifier', 'Line', 'Annotation'],
-  rows.map(r => [r.link, r.id, r.line ? lineLink(r.filePath, r.line) : '', r.text])
+  ['Note', 'Identifier', 'Line', 'Annotation', 'Citation'],
+  rows.map(r => [r.link, r.id, r.line ? lineLink(r.filePath, r.line) : '', r.text, r.citation])
 );
+```
+
+### Example — DataviewJS bibliography table
+
+List every `.bib` file in your configured folder as a level-2 header, with a table of entries (key, author, year, title) sorted alphabetically:
+
+```javascript
+dataviewjs
+const plugin = app.plugins.plugins['annotation-manager'];
+if (!plugin) { dv.paragraph('Annotation Manager plugin not found.'); return; }
+
+const bibData = await plugin.getBibEntries();
+const sorted = [...bibData.entries()].sort(([a], [b]) => a.localeCompare(b));
+
+for (const [filename, entries] of sorted) {
+  dv.header(2, filename);
+  if (entries.length === 0) { dv.paragraph('No entries found.'); continue; }
+  dv.table(
+    ['Key', 'Author', 'Year', 'Title'],
+    entries.map(e => [e.key, e.author, e.year, e.title])
+  );
+}
 ```
 
 ---

@@ -3,29 +3,36 @@
     "math/cold": {
       "fontColor": "#2e8ca3",
       "backgroundColor": "#fce3e8",
-      "fontSize": ""
+      "fontSize": "",
+      "bibFile": "ToRead.bib"
     },
     "math/hot": {
       "fontColor": "#c24040",
       "backgroundColor": "",
-      "fontSize": "12px"
+      "fontSize": "12px",
+      "bibFile": "ToRead.bib"
     },
     "stats": {
       "fontColor": "#f5b761",
       "backgroundColor": "",
-      "fontSize": ""
-    },
-    "stats/ttest": {
-      "fontColor": "#e31212",
-      "backgroundColor": "#fbfce3",
-      "fontSize": ""
+      "fontSize": "",
+      "bibFile": "ToRead.bib"
     },
     "stats/chi": {
       "fontColor": "#b3f2c4",
       "backgroundColor": "#a5d7f2",
-      "fontSize": ""
+      "fontSize": "",
+      "bibFile": "ToRead.bib"
+    },
+    "stats/ttest": {
+      "fontColor": "#e31212",
+      "backgroundColor": "#fbfce3",
+      "fontSize": "",
+      "bibFile": "ToRead.bib"
     }
   },
   "configSource": "file",
-  "configFilePath": "AnnotMark/AMConfig.md"
+  "configFilePath": "Meta/AMConfig.md",
+  "bibFolderPath": "Meta/Bibs",
+  "showBibFilesInBrowser": true
 }
