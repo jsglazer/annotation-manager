@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import { App, FuzzySuggestModal, PluginSettingTab, Setting, TFile } from 'obsidian';
 import AnnotationManagerPlugin from './main';
 
 export interface IdentifierStyle {
@@ -113,7 +113,7 @@ export function parseConfigTable(content: string): Record<string, IdentifierStyl
 
 		const [name = '', fontColor = '', bgColor = '', fontSize = ''] = cols;
 		// 6-col format includes Bib File column before Example; 5-col is legacy
-		const bibFile = cols.length >= 6 ? (cols[4] ?? '').trim() : '';
+		const bibFile = cols.length >= 6 ? (cols[4] ?? '').replace(/^\[|\]$/g, '').trim() : '';
 		if (!name) continue;
 
 		styles[name] = {
@@ -294,15 +294,28 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 	}
 
 	private renderFileSourceUI(containerEl: HTMLElement): void {
+		let configPathInput: HTMLInputElement | null = null;
+
 		new Setting(containerEl)
 			.setName('Config file path')
 			.setDesc('Path to a Markdown file in your vault (relative to vault root) containing the style table')
-			.addText(t => t
-				.setPlaceholder('OccConfig.md')
-				.setValue(this.plugin.settings.configFilePath)
-				.onChange(async v => {
-					this.plugin.settings.configFilePath = v.trim() || 'OccConfig.md';
-					await this.plugin.saveSettings();
+			.addText(t => {
+				configPathInput = t.inputEl;
+				t.setPlaceholder('OccConfig.md')
+					.setValue(this.plugin.settings.configFilePath)
+					.onChange(async v => {
+						this.plugin.settings.configFilePath = v.trim() || 'OccConfig.md';
+						await this.plugin.saveSettings();
+					});
+			})
+			.addButton(btn => btn
+				.setButtonText('Browse…')
+				.onClick(() => {
+					new VaultFileSuggestModal(this.app, (file) => {
+						this.plugin.settings.configFilePath = file.path;
+						void this.plugin.saveSettings();
+						if (configPathInput) configPathInput.value = file.path;
+					}).open();
 				})
 			);
 
@@ -531,5 +544,26 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		setting.controlEl.style.alignItems = 'center';
 		setting.controlEl.appendChild(picker);
 		setting.controlEl.appendChild(hexInput);
+	}
+}
+
+// ── Vault file picker modal ───────────────────────────────────────────────
+
+class VaultFileSuggestModal extends FuzzySuggestModal<TFile> {
+	constructor(app: App, private onChoose: (file: TFile) => void) {
+		super(app);
+		this.setPlaceholder('Search for a Markdown file…');
+	}
+
+	getItems(): TFile[] {
+		return this.app.vault.getMarkdownFiles().sort((a, b) => a.path.localeCompare(b.path));
+	}
+
+	getItemText(file: TFile): string {
+		return file.path;
+	}
+
+	onChooseItem(file: TFile): void {
+		this.onChoose(file);
 	}
 }

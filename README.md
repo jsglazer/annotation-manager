@@ -146,11 +146,12 @@ Use **Expand All** / **Collapse All** to show or hide all groups at once. Indivi
 
 When the Dataview plugin is enabled, each note gets a `cc` field containing an array of annotation objects — one per annotation found in that note.
 
-Each object has four properties:
+Each object has five properties:
 - `parent` — the parent part of the identifier (e.g. `math`)
 - `child` — the child part (e.g. `hot`), or an empty string if none
 - `text` — the annotation content
 - `line` — the 1-based line number where the annotation appears in the file
+- `citation` — the BibTeX key from a `{=/{key}/=}` marker immediately following the annotation, or an empty string
 
 ### Example — Dataview (DQL)
 
@@ -165,7 +166,7 @@ GROUP BY file.link AS File
 ```
 ### Example — DataviewJS
 
-Show all `math/hot` and `stats` annotations across the vault as a table, with a header, clickable line numbers, and sorted by Note → Identifier → Line → Annotation:
+Show all `math/hot` and `stats` annotations across the vault as a table, with a header, clickable line numbers, citation keys, and sorted by Note → Identifier → Line → Annotation:
 
 ```javascript
 dataviewjs
@@ -175,10 +176,10 @@ const targets = [
 ];
 
 function matches(ann, t) {
-  return ann.parent === t.parent && ann.child === t.child;
+  return String(ann.parent) === t.parent && String(ann.child) === t.child;
 }
 
-const terms = targets.map(t => t.child ? `${t.parent}/${t.child}` : t.parent);
+const terms = targets.map(t => t.child ? (t.parent + '/' + t.child) : t.parent);
 dv.header(2, 'Annotations for ' + terms.join(' and '));
 
 function lineLink(filePath, line) {
@@ -204,9 +205,16 @@ function lineLink(filePath, line) {
 
 const rows = [];
 for (const page of dv.pages().where(p => p.cc)) {
-  for (const ann of page.cc) {
+  for (const rawAnn of page.cc) {
+    const ann = {
+      parent: String(rawAnn.parent ?? ''),
+      child: String(rawAnn.child ?? ''),
+      text: String(rawAnn.text ?? ''),
+      line: rawAnn.line ? Number(rawAnn.line) : null,
+      citation: String(rawAnn.citation ?? ''),
+    };
     if (targets.some(t => matches(ann, t))) {
-      const id = ann.child ? `${ann.parent}/${ann.child}` : ann.parent;
+      const id = ann.child ? (ann.parent + '/' + ann.child) : ann.parent;
       rows.push({
         note: page.file.name,
         link: page.file.link,
@@ -214,6 +222,7 @@ for (const page of dv.pages().where(p => p.cc)) {
         id,
         line: ann.line,
         text: ann.text,
+        citation: ann.citation,
       });
     }
   }
@@ -231,8 +240,8 @@ rows.sort((a, b) => {
 });
 
 dv.table(
-  ['Note', 'Identifier', 'Line', 'Annotation'],
-  rows.map(r => [r.link, r.id, r.line ? lineLink(r.filePath, r.line) : '', r.text])
+  ['Note', 'Identifier', 'Line', 'Annotation', 'Citation'],
+  rows.map(r => [r.link, r.id, r.line ? lineLink(r.filePath, r.line) : '', r.text, r.citation])
 );
 ```
 

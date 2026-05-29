@@ -235,3 +235,11 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
+
+/* ── Bib file view hint ──────────────────────────────────────────────────── */
+
+.cc-bib-view-hint {
+	padding: 24px;
+	color: var(--text-muted);
+	font-style: italic;
+}

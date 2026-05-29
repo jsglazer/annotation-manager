@@ -1,4 +1,4 @@
-import { App, debounce, Editor, MarkdownView, Notice, Plugin, setIcon, SuggestModal, TFile } from 'obsidian';
+import { App, debounce, Editor, FileView, MarkdownView, Notice, Plugin, setIcon, SuggestModal, TFile, WorkspaceLeaf } from 'obsidian';
 import {
 	AnnotationManagerSettings,
 	AnnotationManagerSettingTab,
@@ -29,7 +29,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 	private fileAnnotations: Map<string, Annotation[]> = new Map();
 	private debouncedRefresh = debounce(() => this._refreshSidebar(), 150, true);
-	private debouncedReloadConfig = debounce(() => { void this.reloadConfigFile(); }, 3000, true);
+	private debouncedReloadConfig = debounce(() => { void this.reloadConfigFile(); }, 8000);
 	private _writingConfigFile = false;
 
 	async onload() {
@@ -37,6 +37,11 @@ export default class AnnotationManagerPlugin extends Plugin {
 		this.updateStyleSheet();
 
 		this.addSettingTab(new AnnotationManagerSettingTab(this.app, this));
+
+		// Register .bib file view so clicking .bib files stays in Obsidian
+		this.registerView(BIB_VIEW_TYPE, (leaf) => new BibFileView(leaf));
+		this.registerExtensions(['bib'], BIB_VIEW_TYPE);
+
 		this.registerEditorExtension(createCommentViewPlugin(this));
 		this.registerMarkdownPostProcessor((el) => this.processReadingView(el));
 
@@ -535,11 +540,33 @@ export default class AnnotationManagerPlugin extends Plugin {
 		if (annotations.length > 0) {
 			page.fields.set(
 				'cc',
-				annotations.map(a => ({ parent: a.parent, child: a.child, text: a.text, line: a.line })),
+				annotations.map(a => ({ parent: a.parent, child: a.child, text: a.text, line: a.line, citation: a.citation })),
 			);
 		} else {
 			page.fields.delete('cc');
 		}
+	}
+}
+
+// ── Bib file view (prevents .bib files from opening in external apps) ─────
+
+const BIB_VIEW_TYPE = 'annotation-manager-bib';
+
+class BibFileView extends FileView {
+	constructor(leaf: WorkspaceLeaf) { super(leaf); }
+
+	getViewType(): string { return BIB_VIEW_TYPE; }
+	getDisplayText(): string { return this.file?.name ?? 'BibTeX'; }
+	canAcceptExtension(extension: string): boolean { return extension === 'bib'; }
+
+	async onLoadFile(_file: TFile): Promise<void> {
+		this.contentEl.empty();
+		this.contentEl.createDiv({ cls: 'cc-bib-view-hint' })
+			.createEl('p', { text: 'Use the "Insert citation" command to pick entries from this file.' });
+	}
+
+	async onUnloadFile(_file: TFile): Promise<void> {
+		this.contentEl.empty();
 	}
 }
 

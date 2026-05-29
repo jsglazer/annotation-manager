@@ -91,7 +91,7 @@ function parseConfigTable(content) {
     if (!separatorSeen) continue;
     const cols = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
     const [name = "", fontColor = "", bgColor = "", fontSize = ""] = cols;
-    const bibFile = cols.length >= 6 ? ((_a = cols[4]) != null ? _a : "").trim() : "";
+    const bibFile = cols.length >= 6 ? ((_a = cols[4]) != null ? _a : "").replace(/^\[|\]$/g, "").trim() : "";
     if (!name) continue;
     styles[name] = {
       fontColor: normalizeHex(fontColor),
@@ -222,10 +222,20 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     }
   }
   renderFileSourceUI(containerEl) {
-    new import_obsidian.Setting(containerEl).setName("Config file path").setDesc("Path to a Markdown file in your vault (relative to vault root) containing the style table").addText(
-      (t) => t.setPlaceholder("OccConfig.md").setValue(this.plugin.settings.configFilePath).onChange(async (v) => {
+    let configPathInput = null;
+    new import_obsidian.Setting(containerEl).setName("Config file path").setDesc("Path to a Markdown file in your vault (relative to vault root) containing the style table").addText((t) => {
+      configPathInput = t.inputEl;
+      t.setPlaceholder("OccConfig.md").setValue(this.plugin.settings.configFilePath).onChange(async (v) => {
         this.plugin.settings.configFilePath = v.trim() || "OccConfig.md";
         await this.plugin.saveSettings();
+      });
+    }).addButton(
+      (btn) => btn.setButtonText("Browse\u2026").onClick(() => {
+        new VaultFileSuggestModal(this.app, (file) => {
+          this.plugin.settings.configFilePath = file.path;
+          void this.plugin.saveSettings();
+          if (configPathInput) configPathInput.value = file.path;
+        }).open();
       })
     );
     new import_obsidian.Setting(containerEl).setName("Config file actions").addButton(
@@ -392,9 +402,26 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     setting.controlEl.appendChild(hexInput);
   }
 };
+var VaultFileSuggestModal = class extends import_obsidian.FuzzySuggestModal {
+  constructor(app, onChoose) {
+    super(app);
+    this.onChoose = onChoose;
+    this.setPlaceholder("Search for a Markdown file\u2026");
+  }
+  getItems() {
+    return this.app.vault.getMarkdownFiles().sort((a, b) => a.path.localeCompare(b.path));
+  }
+  getItemText(file) {
+    return file.path;
+  }
+  onChooseItem(file) {
+    this.onChoose(file);
+  }
+};
 
 // src/parser.ts
 var PATTERN = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}(.*?)=\}/g;
+var CITATION_RE = /^\{=\/\{([^/}]+)\/=\}/;
 function getCodeRanges(content) {
   const ranges = [];
   const fenced = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$/gm;
@@ -412,7 +439,7 @@ function isInCodeRange(from, to, ranges) {
   return ranges.some(([rFrom, rTo]) => from < rTo && to > rFrom);
 }
 function parseAnnotations(content) {
-  var _a, _b, _c, _d, _e;
+  var _a, _b, _c, _d, _e, _f;
   const codeRanges = getCodeRanges(content);
   const results = [];
   const re = new RegExp(PATTERN.source, "g");
@@ -422,13 +449,15 @@ function parseAnnotations(content) {
     const to = match.index + ((_b = (_a = match[0]) == null ? void 0 : _a.length) != null ? _b : 0);
     if (isInCodeRange(from, to, codeRanges)) continue;
     const line = content.slice(0, from).split("\n").length;
+    const citMatch = CITATION_RE.exec(content.slice(to));
     results.push({
       parent: (_c = match[1]) != null ? _c : "",
       child: (_d = match[2]) != null ? _d : "",
       text: ((_e = match[3]) != null ? _e : "").trim(),
       from,
       to,
-      line
+      line,
+      citation: citMatch ? (_f = citMatch[1]) != null ? _f : "" : ""
     });
   }
   return results;
@@ -785,13 +814,15 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
     this.debouncedRefresh = (0, import_obsidian3.debounce)(() => this._refreshSidebar(), 150, true);
     this.debouncedReloadConfig = (0, import_obsidian3.debounce)(() => {
       void this.reloadConfigFile();
-    }, 3e3, true);
+    }, 8e3);
     this._writingConfigFile = false;
   }
   async onload() {
     await this.loadSettings();
     this.updateStyleSheet();
     this.addSettingTab(new AnnotationManagerSettingTab(this.app, this));
+    this.registerView(BIB_VIEW_TYPE, (leaf) => new BibFileView(leaf));
+    this.registerExtensions(["bib"], BIB_VIEW_TYPE);
     this.registerEditorExtension(createCommentViewPlugin(this));
     this.registerMarkdownPostProcessor((el) => this.processReadingView(el));
     this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new AnnotationSidebarView(leaf, this));
@@ -1214,11 +1245,34 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
     if (annotations.length > 0) {
       page.fields.set(
         "cc",
-        annotations.map((a) => ({ parent: a.parent, child: a.child, text: a.text, line: a.line }))
+        annotations.map((a) => ({ parent: a.parent, child: a.child, text: a.text, line: a.line, citation: a.citation }))
       );
     } else {
       page.fields.delete("cc");
     }
+  }
+};
+var BIB_VIEW_TYPE = "annotation-manager-bib";
+var BibFileView = class extends import_obsidian3.FileView {
+  constructor(leaf) {
+    super(leaf);
+  }
+  getViewType() {
+    return BIB_VIEW_TYPE;
+  }
+  getDisplayText() {
+    var _a, _b;
+    return (_b = (_a = this.file) == null ? void 0 : _a.name) != null ? _b : "BibTeX";
+  }
+  canAcceptExtension(extension) {
+    return extension === "bib";
+  }
+  async onLoadFile(_file) {
+    this.contentEl.empty();
+    this.contentEl.createDiv({ cls: "cc-bib-view-hint" }).createEl("p", { text: 'Use the "Insert citation" command to pick entries from this file.' });
+  }
+  async onUnloadFile(_file) {
+    this.contentEl.empty();
   }
 };
 function getAnnotationIdentifierAtCursor(editor) {
