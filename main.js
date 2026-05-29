@@ -29,12 +29,15 @@ var import_obsidian = require("obsidian");
 var DEFAULT_SETTINGS = {
   identifierStyles: {},
   configSource: "settings",
-  configFilePath: "OccConfig.md"
+  configFilePath: "OccConfig.md",
+  bibFolderPath: "",
+  showBibFilesInBrowser: true
 };
 var EMPTY_STYLE = {
   fontSize: "",
   fontColor: "",
-  backgroundColor: ""
+  backgroundColor: "",
+  bibFile: ""
 };
 function identifierKeyToClass(key) {
   return "cc-id-" + key.replace(/\/\*/g, "-wc").replace(/\//g, "-").replace(/[^a-zA-Z0-9-]/g, "-");
@@ -69,6 +72,7 @@ function stripHash(hex) {
   return hex.startsWith("#") ? hex.slice(1) : hex;
 }
 function parseConfigTable(content) {
+  var _a;
   const styles = {};
   const lines = content.split("\n");
   let headerSeen = false;
@@ -87,11 +91,13 @@ function parseConfigTable(content) {
     if (!separatorSeen) continue;
     const cols = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
     const [name = "", fontColor = "", bgColor = "", fontSize = ""] = cols;
+    const bibFile = cols.length >= 6 ? ((_a = cols[4]) != null ? _a : "").trim() : "";
     if (!name) continue;
     styles[name] = {
       fontColor: normalizeHex(fontColor),
       backgroundColor: normalizeHex(bgColor),
-      fontSize: fontSize.trim()
+      fontSize: fontSize.trim(),
+      bibFile
     };
   }
   return styles;
@@ -125,8 +131,9 @@ function injectExamples(content, styles) {
     if (!name || name.startsWith("(")) return line;
     const style = styles[name];
     const example = style ? makeExampleCell(style) : "";
-    const out = [...cols.slice(0, 4)];
-    while (out.length < 4) out.push("");
+    const numDataCols = Math.max(4, cols.length - 1);
+    const out = [...cols.slice(0, numDataCols)];
+    while (out.length < numDataCols) out.push("");
     out.push(example);
     return "| " + out.join(" | ") + " |";
   });
@@ -138,12 +145,16 @@ function renderConfigTable(styles) {
     "",
     "Edit this table to define identifier styles. Save the file to apply changes.",
     "Do not use the `#` prefix for hex colors. Font size accepts any CSS value (e.g. `1.1em`, `14px`).",
+    "Bib File: optional .bib filename to associate with this identifier (e.g. `ToRead.bib`).",
     "",
-    "| Identifier | Font Color | Background Color | Font Size | Example |",
-    "| ---------- | ---------- | ---------------- | --------- | ------- |"
+    "| Identifier | Font Color | Background Color | Font Size | Bib File | Example |",
+    "| ---------- | ---------- | ---------------- | --------- | -------- | ------- |"
   ].join("\n");
   const entries = Object.entries(styles).sort(([a], [b]) => a.localeCompare(b));
-  const rows = entries.length > 0 ? entries.map(([id, s]) => `| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} | ${makeExampleCell(s)} |`).join("\n") : "| (no identifiers configured) | | | | |";
+  const rows = entries.length > 0 ? entries.map(([id, s]) => {
+    var _a;
+    return `| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} | ${(_a = s.bibFile) != null ? _a : ""} | ${makeExampleCell(s)} |`;
+  }).join("\n") : "| (no identifiers configured) | | | | | |";
   return header + "\n" + rows + "\n";
 }
 function isValidHex(s) {
@@ -182,6 +193,20 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     p2.appendText("If you like this plugin\u2026thank Claude, who wrote it all! To see how I made this plugin without coding a single line, see the ");
     p2.createEl("a", { text: "Updates folder", href: "https://github.com/jsglazer/annotation-manager/tree/main/Updates", attr: { target: "_blank", rel: "noopener" } });
     p2.appendText(" in the repository.");
+    containerEl.createEl("h3", { text: "Bibliography" });
+    new import_obsidian.Setting(containerEl).setName("Bib files folder").setDesc("Vault-relative path to the folder containing .bib files (e.g. Meta/Bibs). Required before citations can be inserted.").addText(
+      (t) => t.setPlaceholder("Meta/Bibs").setValue(this.plugin.settings.bibFolderPath).onChange(async (v) => {
+        this.plugin.settings.bibFolderPath = v.trim();
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Show .bib files in file browser").setDesc(`When enabled, the plugin enables Obsidian's "Show all file types" so .bib files appear in the file explorer. When disabled, .bib files are hidden from view via CSS.`).addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.showBibFilesInBrowser).onChange(async (v) => {
+        this.plugin.settings.showBibFilesInBrowser = v;
+        await this.plugin.saveSettings();
+        this.plugin.applyBibFileVisibility();
+      })
+    );
     containerEl.createEl("h3", { text: "Config Source" });
     new import_obsidian.Setting(containerEl).setName("Identifier style source").setDesc("Define styles in this UI, or read them from a Markdown table in your vault").addDropdown(
       (dd) => dd.addOption("settings", "Settings UI").addOption("file", "Config file").setValue(this.plugin.settings.configSource).onChange(async (v) => {
@@ -213,7 +238,7 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
       })
     );
     containerEl.createEl("p", {
-      text: "Table columns: Identifier | Font Color | Background Color | Font Size | Example. No # prefix for hex colors. The plugin reloads automatically when the file is saved.",
+      text: "Table columns: Identifier | Font Color | Background Color | Font Size | Bib File | Example. No # prefix for hex colors. The plugin reloads automatically when the file is saved.",
       cls: "setting-item-description"
     });
     const styles = this.plugin.settings.identifierStyles;
@@ -286,6 +311,15 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
         this.plugin.bumpStyleVersion();
         updatePreview();
       })
+    );
+    new import_obsidian.Setting(wrap).setName("Bib file").setDesc("Optional .bib filename to associate with this identifier (e.g. ToRead.bib)").addText(
+      (t) => {
+        var _a;
+        return t.setPlaceholder("ToRead.bib").setValue((_a = style.bibFile) != null ? _a : "").onChange(async (v) => {
+          style.bibFile = v.trim();
+          await this.plugin.saveSettings();
+        });
+      }
     );
     this.renderColorSetting(
       wrap,
@@ -640,6 +674,99 @@ var AnnotationSidebarView = class extends import_obsidian2.ItemView {
   }
 };
 
+// src/bibtex.ts
+function stripBibBraces(value) {
+  return value.replace(/[{}]/g, "").trim();
+}
+function extractBracedValue(str, start) {
+  if (str[start] !== "{") return null;
+  let depth = 0;
+  let contentStart = -1;
+  let i = start;
+  while (i < str.length) {
+    if (str[i] === "{") {
+      depth++;
+      if (depth === 1) contentStart = i + 1;
+    } else if (str[i] === "}") {
+      depth--;
+      if (depth === 0) return { value: str.slice(contentStart, i), end: i + 1 };
+    }
+    i++;
+  }
+  return null;
+}
+function parseFields(body) {
+  var _a, _b;
+  const fields = {};
+  let i = 0;
+  const len = body.length;
+  while (i < len) {
+    while (i < len && /[\s,]/.test((_a = body[i]) != null ? _a : "")) i++;
+    if (i >= len) break;
+    const nameStart = i;
+    while (i < len && body[i] !== "=" && body[i] !== "," && body[i] !== "}") i++;
+    const name = body.slice(nameStart, i).trim().toLowerCase();
+    if (!name || body[i] !== "=") {
+      i++;
+      continue;
+    }
+    i++;
+    while (i < len && /[ \t\n\r]/.test((_b = body[i]) != null ? _b : "")) i++;
+    let value = "";
+    if (i < len && body[i] === "{") {
+      const result = extractBracedValue(body, i);
+      if (result) {
+        value = result.value;
+        i = result.end;
+      }
+    } else if (i < len && body[i] === '"') {
+      i++;
+      const start = i;
+      while (i < len && body[i] !== '"') i++;
+      value = body.slice(start, i);
+      if (i < len) i++;
+    } else {
+      const start = i;
+      while (i < len && body[i] !== "," && body[i] !== "\n" && body[i] !== "\r" && body[i] !== "}") i++;
+      value = body.slice(start, i).trim();
+    }
+    if (name) fields[name] = value;
+  }
+  return fields;
+}
+function parseBibFile(content) {
+  var _a, _b, _c, _d, _e;
+  const entries = [];
+  const entryRe = /@(\w+)\s*\{/g;
+  let match;
+  while ((match = entryRe.exec(content)) !== null) {
+    const type = ((_a = match[1]) != null ? _a : "").toLowerCase();
+    if (type === "comment" || type === "string" || type === "preamble") continue;
+    const blockStart = match.index + match[0].length;
+    let depth = 1;
+    let i = blockStart;
+    while (i < content.length && depth > 0) {
+      if (content[i] === "{") depth++;
+      else if (content[i] === "}") depth--;
+      i++;
+    }
+    const block = content.slice(blockStart, i - 1);
+    const commaIdx = block.indexOf(",");
+    if (commaIdx === -1) continue;
+    const key = block.slice(0, commaIdx).trim();
+    if (!key) continue;
+    const fields = parseFields(block.slice(commaIdx + 1));
+    entries.push({
+      key,
+      type,
+      author: stripBibBraces((_b = fields["author"]) != null ? _b : ""),
+      year: stripBibBraces((_c = fields["year"]) != null ? _c : ""),
+      title: stripBibBraces((_e = (_d = fields["shorttitle"]) != null ? _d : fields["title"]) != null ? _e : "")
+    });
+  }
+  return entries;
+}
+
 // src/main.ts
 var STYLE_EL_ID = "annotation-manager-styles";
 var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
@@ -741,6 +868,41 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
         new import_obsidian3.Notice(`Annotation text formatting ${this.textFormattingEnabled ? "enabled" : "disabled"}`);
       }
     });
+    this.addCommand({
+      id: "insert-citation",
+      name: "Insert citation",
+      editorCallback: async (editor) => {
+        if (!this.settings.bibFolderPath) {
+          new import_obsidian3.Notice("Annotation Manager: set the Bib files folder path in settings before inserting citations.");
+          return;
+        }
+        const bibFolder = this.settings.bibFolderPath.replace(/\/$/, "");
+        const bibFiles = this.app.vault.getFiles().filter((f) => {
+          var _a;
+          return f.extension === "bib" && ((_a = f.parent) == null ? void 0 : _a.path) === bibFolder;
+        }).sort((a, b) => a.name.localeCompare(b.name));
+        if (bibFiles.length === 0) {
+          new import_obsidian3.Notice(`No .bib files found in "${bibFolder}". Check the folder path in settings.`);
+          return;
+        }
+        let specificBibFile = null;
+        const annotationId = getAnnotationIdentifierAtCursor(editor);
+        if (annotationId) {
+          const slashIdx = annotationId.indexOf("/");
+          const parent = slashIdx !== -1 ? annotationId.slice(0, slashIdx) : annotationId;
+          const child = slashIdx !== -1 ? annotationId.slice(slashIdx + 1) : "";
+          const style = resolvedStyle(parent, child, this.settings.identifierStyles);
+          specificBibFile = (style == null ? void 0 : style.bibFile) || null;
+        }
+        new BibFileSuggestModal(this.app, bibFiles, specificBibFile, async (selectedFile) => {
+          const content = await this.app.vault.read(selectedFile);
+          const entries = parseBibFile(content).sort((a, b) => a.key.localeCompare(b.key));
+          new CitationSuggestModal(this.app, entries, (key) => {
+            editor.replaceRange(`{=/{${key}/=}`, editor.getCursor());
+          }).open();
+        }).open();
+      }
+    });
     this.app.workspace.onLayoutReady(async () => {
       await this.indexAllFiles();
       if (this.settings.configSource === "file") {
@@ -748,6 +910,7 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
       }
       this.setupDataviewIntegration();
       this.addRightSidebarButton();
+      this.applyBibFileVisibility();
       const leaves = this.app.workspace.getLeavesOfType(SIDEBAR_VIEW_TYPE);
       if (leaves.length === 0) {
         const leaf = this.app.workspace.getRightLeaf(false);
@@ -878,6 +1041,9 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
       document.head.appendChild(el);
     }
     const rules = [];
+    if (!this.settings.showBibFilesInBrowser) {
+      rules.push(`.nav-file:has(.nav-file-title[data-path$=".bib"]) { display: none !important; }`);
+    }
     rules.push(`.cm-editor .cm-content .cm-line .cc-annotation-editor { color: var(--text-normal) !important; }`);
     rules.push(`.cm-editor .cm-content .cm-line .cc-annotation-editor * { color: var(--text-normal) !important; background-color: transparent !important; }`);
     for (const [key, style] of Object.entries(this.settings.identifierStyles)) {
@@ -986,6 +1152,38 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
     }
     new import_obsidian3.Notice(`Loaded ${Object.keys(this.settings.identifierStyles).length} identifiers from ${path}`);
   }
+  // ── Bibliography integration ─────────────────────────────────────────────
+  applyBibFileVisibility() {
+    var _a, _b, _c, _d;
+    if (this.settings.showBibFilesInBrowser) {
+      try {
+        (_b = (_a = this.app.vault).setConfig) == null ? void 0 : _b.call(_a, "showUnsupportedFiles", true);
+        (_d = (_c = this.app).saveLocalStorage) == null ? void 0 : _d.call(_c);
+      } catch (_) {
+      }
+    }
+    this.updateStyleSheet();
+    this.app.workspace.updateOptions();
+  }
+  async getBibEntries() {
+    const result = /* @__PURE__ */ new Map();
+    const folder = this.settings.bibFolderPath.replace(/\/$/, "");
+    if (!folder) return result;
+    const bibFiles = this.app.vault.getFiles().filter((f) => {
+      var _a;
+      return f.extension === "bib" && ((_a = f.parent) == null ? void 0 : _a.path) === folder;
+    }).sort((a, b) => a.name.localeCompare(b.name));
+    for (const file of bibFiles) {
+      try {
+        const content = await this.app.vault.read(file);
+        const entries = parseBibFile(content).sort((a, b) => a.key.localeCompare(b.key));
+        result.set(file.name, entries);
+      } catch (e) {
+        console.error(`Annotation Manager: failed to parse ${file.name}:`, e);
+      }
+    }
+    return result;
+  }
   // ── Dataview integration ─────────────────────────────────────────────────
   setupDataviewIntegration() {
     var _a, _b;
@@ -1021,6 +1219,96 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
     } else {
       page.fields.delete("cc");
     }
+  }
+};
+function getAnnotationIdentifierAtCursor(editor) {
+  var _a;
+  const cursor = editor.getCursor();
+  const line = editor.getLine(cursor.line);
+  const textBeforeCursor = line.slice(0, cursor.ch);
+  if (!textBeforeCursor.endsWith("=}")) return null;
+  const pattern = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}.*?=\}/g;
+  let match;
+  while ((match = pattern.exec(textBeforeCursor)) !== null) {
+    if (match.index + match[0].length === textBeforeCursor.length) {
+      const parent = (_a = match[1]) != null ? _a : "";
+      const child = match[2];
+      return child ? `${parent}/${child}` : parent;
+    }
+  }
+  return null;
+}
+var BibFileSuggestModal = class _BibFileSuggestModal extends import_obsidian3.SuggestModal {
+  constructor(app, bibFiles, specificBibFileName, onChoose) {
+    var _a;
+    super(app);
+    this.bibFiles = bibFiles;
+    this.specificBibFileName = specificBibFileName;
+    this.onChoose = onChoose;
+    this.setPlaceholder("Select a .bib file\u2026");
+    this.specificFile = specificBibFileName ? (_a = bibFiles.find((f) => f.name === specificBibFileName)) != null ? _a : null : null;
+  }
+  getSuggestions(query) {
+    const q = query.toLowerCase();
+    const items = [];
+    const others = this.bibFiles.filter(
+      (f) => f !== this.specificFile && (!q || f.name.toLowerCase().includes(q))
+    );
+    if (this.specificFile && (!q || this.specificFile.name.toLowerCase().includes(q))) {
+      items.push({ kind: "file", file: this.specificFile, linked: true });
+      if (others.length > 0) items.push({ kind: "sep" });
+    }
+    items.push(...others.map((f) => ({ kind: "file", file: f, linked: false })));
+    return items;
+  }
+  renderSuggestion(item, el) {
+    if (item.kind === "sep") {
+      el.addClass("cc-bib-separator");
+      return;
+    }
+    const row = el.createDiv({ cls: "cc-suggest-row" });
+    row.createEl("span", { text: item.file.name, cls: "cc-suggest-id" });
+    if (item.linked) {
+      row.createEl("span", { text: "linked", cls: "cc-suggest-badge" });
+    }
+  }
+  onChooseSuggestion(item) {
+    if (item.kind === "sep") {
+      setTimeout(() => new _BibFileSuggestModal(
+        this.app,
+        this.bibFiles,
+        this.specificBibFileName,
+        this.onChoose
+      ).open(), 50);
+      return;
+    }
+    this.onChoose(item.file);
+  }
+};
+var CitationSuggestModal = class extends import_obsidian3.SuggestModal {
+  constructor(app, entries, onChoose) {
+    super(app);
+    this.entries = entries;
+    this.onChoose = onChoose;
+    this.setPlaceholder("Select a citation\u2026");
+  }
+  getSuggestions(query) {
+    const q = query.toLowerCase();
+    if (!q) return this.entries;
+    return this.entries.filter(
+      (e) => e.key.toLowerCase().includes(q) || e.author.toLowerCase().includes(q) || e.title.toLowerCase().includes(q)
+    );
+  }
+  renderSuggestion(entry, el) {
+    const row = el.createDiv({ cls: "cc-cite-row" });
+    row.createEl("div", { text: entry.key, cls: "cc-cite-key" });
+    const meta = row.createDiv({ cls: "cc-cite-meta" });
+    if (entry.author) meta.createEl("span", { text: entry.author, cls: "cc-cite-author" });
+    if (entry.year) meta.createEl("span", { text: ` (${entry.year})`, cls: "cc-cite-year" });
+    if (entry.title) meta.createEl("span", { text: ` \u2014 ${entry.title}`, cls: "cc-cite-title" });
+  }
+  onChooseSuggestion(entry) {
+    this.onChoose(entry.key);
   }
 };
 var IdentifierSuggestModal = class extends import_obsidian3.SuggestModal {

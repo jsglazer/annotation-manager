@@ -5,6 +5,7 @@ export interface IdentifierStyle {
 	fontSize: string;
 	fontColor: string;
 	backgroundColor: string;
+	bibFile?: string;
 }
 
 export interface AnnotationManagerSettings {
@@ -12,18 +13,23 @@ export interface AnnotationManagerSettings {
 	identifierStyles: Record<string, IdentifierStyle>;
 	configSource: 'settings' | 'file';
 	configFilePath: string;
+	bibFolderPath: string;
+	showBibFilesInBrowser: boolean;
 }
 
 export const DEFAULT_SETTINGS: AnnotationManagerSettings = {
 	identifierStyles: {},
 	configSource: 'settings',
 	configFilePath: 'OccConfig.md',
+	bibFolderPath: '',
+	showBibFilesInBrowser: true,
 };
 
 export const EMPTY_STYLE: IdentifierStyle = {
 	fontSize: '',
 	fontColor: '',
 	backgroundColor: '',
+	bibFile: '',
 };
 
 // --- Helpers shared with decoration.ts and main.ts ---
@@ -106,12 +112,15 @@ export function parseConfigTable(content: string): Record<string, IdentifierStyl
 			.map(c => c.trim());
 
 		const [name = '', fontColor = '', bgColor = '', fontSize = ''] = cols;
+		// 6-col format includes Bib File column before Example; 5-col is legacy
+		const bibFile = cols.length >= 6 ? (cols[4] ?? '').trim() : '';
 		if (!name) continue;
 
 		styles[name] = {
 			fontColor: normalizeHex(fontColor),
 			backgroundColor: normalizeHex(bgColor),
 			fontSize: fontSize.trim(),
+			bibFile,
 		};
 	}
 
@@ -152,8 +161,10 @@ export function injectExamples(content: string, styles: Record<string, Identifie
 		const style = styles[name];
 		const example = style ? makeExampleCell(style) : '';
 
-		const out = [...cols.slice(0, 4)];
-		while (out.length < 4) out.push('');
+		// Preserve all data columns (everything except the last/example column)
+		const numDataCols = Math.max(4, cols.length - 1);
+		const out = [...cols.slice(0, numDataCols)];
+		while (out.length < numDataCols) out.push('');
 		out.push(example);
 
 		return '| ' + out.join(' | ') + ' |';
@@ -168,15 +179,16 @@ export function renderConfigTable(styles: Record<string, IdentifierStyle>): stri
 		'',
 		'Edit this table to define identifier styles. Save the file to apply changes.',
 		'Do not use the `#` prefix for hex colors. Font size accepts any CSS value (e.g. `1.1em`, `14px`).',
+		'Bib File: optional .bib filename to associate with this identifier (e.g. `ToRead.bib`).',
 		'',
-		'| Identifier | Font Color | Background Color | Font Size | Example |',
-		'| ---------- | ---------- | ---------------- | --------- | ------- |',
+		'| Identifier | Font Color | Background Color | Font Size | Bib File | Example |',
+		'| ---------- | ---------- | ---------------- | --------- | -------- | ------- |',
 	].join('\n');
 
 	const entries = Object.entries(styles).sort(([a], [b]) => a.localeCompare(b));
 	const rows = entries.length > 0
-		? entries.map(([id, s]) => `| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} | ${makeExampleCell(s)} |`).join('\n')
-		: '| (no identifiers configured) | | | | |';
+		? entries.map(([id, s]) => `| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} | ${s.bibFile ?? ''} | ${makeExampleCell(s)} |`).join('\n')
+		: '| (no identifiers configured) | | | | | |';
 
 	return header + '\n' + rows + '\n';
 }
@@ -230,6 +242,34 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		p2.createEl('a', { text: 'Updates folder', href: 'https://github.com/jsglazer/annotation-manager/tree/main/Updates', attr: { target: '_blank', rel: 'noopener' } });
 		p2.appendText(' in the repository.');
 
+		// ── Bibliography ───────────────────────────────────────────────────────
+		containerEl.createEl('h3', { text: 'Bibliography' });
+
+		new Setting(containerEl)
+			.setName('Bib files folder')
+			.setDesc('Vault-relative path to the folder containing .bib files (e.g. Meta/Bibs). Required before citations can be inserted.')
+			.addText(t => t
+				.setPlaceholder('Meta/Bibs')
+				.setValue(this.plugin.settings.bibFolderPath)
+				.onChange(async v => {
+					this.plugin.settings.bibFolderPath = v.trim();
+					await this.plugin.saveSettings();
+				})
+			);
+
+		new Setting(containerEl)
+			.setName('Show .bib files in file browser')
+			.setDesc('When enabled, the plugin enables Obsidian\'s "Show all file types" so .bib files appear in the file explorer. When disabled, .bib files are hidden from view via CSS.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.showBibFilesInBrowser)
+				.onChange(async v => {
+					this.plugin.settings.showBibFilesInBrowser = v;
+					await this.plugin.saveSettings();
+					this.plugin.applyBibFileVisibility();
+				})
+			);
+
+		// ── Config Source ──────────────────────────────────────────────────────
 		containerEl.createEl('h3', { text: 'Config Source' });
 
 		new Setting(containerEl)
@@ -283,7 +323,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			);
 
 		containerEl.createEl('p', {
-			text: 'Table columns: Identifier | Font Color | Background Color | Font Size | Example. '
+			text: 'Table columns: Identifier | Font Color | Background Color | Font Size | Bib File | Example. '
 				+ 'No # prefix for hex colors. The plugin reloads automatically when the file is saved.',
 			cls: 'setting-item-description',
 		});
@@ -380,6 +420,19 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 						this.plugin.bumpStyleVersion();
 						updatePreview();
+					}),
+			);
+
+		new Setting(wrap)
+			.setName('Bib file')
+			.setDesc('Optional .bib filename to associate with this identifier (e.g. ToRead.bib)')
+			.addText(t =>
+				t
+					.setPlaceholder('ToRead.bib')
+					.setValue(style.bibFile ?? '')
+					.onChange(async v => {
+						style.bibFile = v.trim();
+						await this.plugin.saveSettings();
 					}),
 			);
 
