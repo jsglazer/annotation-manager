@@ -236,6 +236,33 @@
 	text-overflow: ellipsis;
 }
 
+/* ── Typeahead dropdown ──────────────────────────────────────────────────── */
+
+.cc-typeahead-dropdown {
+	position: fixed;
+	z-index: 1000;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	overflow-y: auto;
+	max-height: 220px;
+}
+
+.cc-typeahead-item {
+	padding: 5px 10px;
+	font-size: 0.85em;
+	cursor: pointer;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.cc-typeahead-item:hover,
+.cc-typeahead-item.cc-typeahead-active {
+	background: var(--background-modifier-hover);
+}
+
 /* ── Bib file view hint ──────────────────────────────────────────────────── */
 
 .cc-bib-view-hint {

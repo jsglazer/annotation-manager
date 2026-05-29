@@ -34,5 +34,6 @@
   "configSource": "file",
   "configFilePath": "Meta/AMConfig.md",
   "bibFolderPath": "Meta/Bibs",
-  "showBibFilesInBrowser": true
+  "showBibFilesInBrowser": true,
+  "citationColor": "#7a7a7a"
 }
