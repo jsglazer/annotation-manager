@@ -15,8 +15,11 @@ All development changes are provided to you via an Update.md file, for example /
 - Log all console output (Code, questions, prompts, diffs, etc.) to the UpdateXX.md file under the # Claude section
 - UpdateXX.md files use the template: /Users/josh/VaultDEV/Templates/UpdateXX
 - UpdateXX.md files are sequentially numbered (01, 02)
+- Update the Closed: field with current date and time when after each write
+
 
 Commit and push after code updates.  Repositories will be under https://github.com/jsglazer/
+- You can commit and push without asking for permission.
 
 Always stop and ask questions if you are unsure about something.
 

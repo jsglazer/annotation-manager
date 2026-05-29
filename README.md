@@ -8,6 +8,19 @@ Annotate text inline in Obsidian, view all annotations in a unified sidebar, sty
 
 ---
 
+
+## Documentation (Wiki)
+
+Full documentation is in the [GitHub Wiki](https://github.com/jsglazer/annotation-manager/wiki):
+
+- [Home](https://github.com/jsglazer/annotation-manager/wiki) — overview and quick start
+- [Annotations](https://github.com/jsglazer/annotation-manager/wiki/Annotations) — syntax, styling, sidebar, commands
+- [Citations](https://github.com/jsglazer/annotation-manager/wiki/Citations) — BibTeX workflow, Zotero integration, settings
+- [DataviewJS Examples](https://github.com/jsglazer/annotation-manager/wiki/DataviewJS-Examples) — querying annotations and bibliography
+
+---
+
+
 ## What it does
 
 - **Inline annotations** — wrap any text in `{={parent/child}your note=}` to tag it with an identifier
@@ -33,16 +46,6 @@ This approach {={math/hot}maximizes the posterior=} under the prior.
 
 ---
 
-## Documentation (Wiki)
-
-Full documentation is in the [GitHub Wiki](https://github.com/jsglazer/annotation-manager/wiki):
-
-- [Home](https://github.com/jsglazer/annotation-manager/wiki) — overview and quick start
-- [Annotations](https://github.com/jsglazer/annotation-manager/wiki/Annotations) — syntax, styling, sidebar, commands
-- [Citations](https://github.com/jsglazer/annotation-manager/wiki/Citations) — BibTeX workflow, Zotero integration, settings
-- [DataviewJS Examples](https://github.com/jsglazer/annotation-manager/wiki/DataviewJS-Examples) — querying annotations and bibliography
-
----
 
 ## Notes
 
