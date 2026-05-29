@@ -15,6 +15,7 @@ export interface AnnotationManagerSettings {
 	configFilePath: string;
 	bibFolderPath: string;
 	showBibFilesInBrowser: boolean;
+	citationColor: string;
 }
 
 export const DEFAULT_SETTINGS: AnnotationManagerSettings = {
@@ -23,6 +24,7 @@ export const DEFAULT_SETTINGS: AnnotationManagerSettings = {
 	configFilePath: 'OccConfig.md',
 	bibFolderPath: '',
 	showBibFilesInBrowser: true,
+	citationColor: '',
 };
 
 export const EMPTY_STYLE: IdentifierStyle = {
@@ -216,6 +218,87 @@ function clearColorStyle(input: HTMLInputElement): void {
 	input.style.color = '';
 }
 
+// --- Typeahead helpers ---
+
+function vaultFolderPaths(app: App, query: string): string[] {
+	const q = query.toLowerCase();
+	const folders = new Set<string>();
+	for (const file of app.vault.getFiles()) {
+		let node = file.parent;
+		while (node && node.path && node.path !== '/') {
+			folders.add(node.path);
+			node = node.parent;
+		}
+	}
+	return [...folders].filter(p => p.toLowerCase().includes(q)).sort().slice(0, 12);
+}
+
+function vaultMarkdownPaths(app: App, query: string): string[] {
+	const q = query.toLowerCase();
+	return app.vault.getMarkdownFiles()
+		.map(f => f.path)
+		.filter(p => p.toLowerCase().includes(q))
+		.sort()
+		.slice(0, 12);
+}
+
+function attachTypeahead(
+	input: HTMLInputElement,
+	getItems: (q: string) => string[],
+	onSelect: (v: string) => void,
+): void {
+	let dropdown: HTMLElement | null = null;
+	let activeIndex = -1;
+
+	function close() {
+		dropdown?.remove();
+		dropdown = null;
+		activeIndex = -1;
+	}
+
+	function open(items: string[]) {
+		close();
+		if (items.length === 0) return;
+
+		const rect = input.getBoundingClientRect();
+		dropdown = document.body.createDiv({ cls: 'cc-typeahead-dropdown' });
+		dropdown.style.top = (rect.bottom + window.scrollY) + 'px';
+		dropdown.style.left = (rect.left + window.scrollX) + 'px';
+		dropdown.style.width = rect.width + 'px';
+
+		const els: HTMLElement[] = items.map(item => {
+			const el = dropdown!.createDiv({ cls: 'cc-typeahead-item', text: item });
+			el.addEventListener('mousedown', (e) => {
+				e.preventDefault();
+				input.value = item;
+				onSelect(item);
+				close();
+			});
+			return el;
+		});
+
+		function updateActive() {
+			els.forEach((el, i) => el.toggleClass('cc-typeahead-active', i === activeIndex));
+		}
+
+		input.onkeydown = (e) => {
+			if (!dropdown) return;
+			if (e.key === 'ArrowDown') { e.preventDefault(); activeIndex = Math.min(activeIndex + 1, els.length - 1); updateActive(); }
+			else if (e.key === 'ArrowUp') { e.preventDefault(); activeIndex = Math.max(activeIndex - 1, 0); updateActive(); }
+			else if (e.key === 'Enter' && activeIndex >= 0) { e.preventDefault(); const v = els[activeIndex]?.textContent ?? ''; input.value = v; onSelect(v); close(); }
+			else if (e.key === 'Escape') close();
+		};
+	}
+
+	input.addEventListener('input', () => {
+		const q = input.value.trim();
+		if (!q) { close(); return; }
+		open(getItems(q));
+	});
+
+	input.addEventListener('blur', () => setTimeout(close, 160));
+}
+
 // --- Settings tab ---
 
 export class AnnotationManagerSettingTab extends PluginSettingTab {
@@ -248,14 +331,30 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Bib files folder')
 			.setDesc('Vault-relative path to the folder containing .bib files (e.g. Meta/Bibs). Required before citations can be inserted.')
-			.addText(t => t
-				.setPlaceholder('Meta/Bibs')
-				.setValue(this.plugin.settings.bibFolderPath)
-				.onChange(async v => {
-					this.plugin.settings.bibFolderPath = v.trim();
-					await this.plugin.saveSettings();
-				})
-			);
+			.addText(t => {
+				attachTypeahead(t.inputEl, (q) => vaultFolderPaths(this.app, q), (v) => {
+					this.plugin.settings.bibFolderPath = v;
+					void this.plugin.saveSettings();
+				});
+				t.setPlaceholder('Meta/Bibs')
+					.setValue(this.plugin.settings.bibFolderPath)
+					.onChange(async v => {
+						this.plugin.settings.bibFolderPath = v.trim();
+						await this.plugin.saveSettings();
+					});
+			});
+
+		this.renderColorSetting(
+			containerEl,
+			'Citation color',
+			'Font color applied to citation markers {=/{key}/=} including delimiters. Leave blank to inherit.',
+			() => this.plugin.settings.citationColor,
+			async v => {
+				this.plugin.settings.citationColor = v;
+				await this.plugin.saveSettings();
+				this.plugin.bumpStyleVersion();
+			},
+		);
 
 		new Setting(containerEl)
 			.setName('Show .bib files in file browser')
@@ -301,6 +400,11 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			.setDesc('Path to a Markdown file in your vault (relative to vault root) containing the style table')
 			.addText(t => {
 				configPathInput = t.inputEl;
+				attachTypeahead(t.inputEl, (q) => vaultMarkdownPaths(this.app, q), (v) => {
+					this.plugin.settings.configFilePath = v;
+					void this.plugin.saveSettings();
+					t.setValue(v);
+				});
 				t.setPlaceholder('OccConfig.md')
 					.setValue(this.plugin.settings.configFilePath)
 					.onChange(async v => {

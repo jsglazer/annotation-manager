@@ -11,7 +11,7 @@ import {
 	resolvedStyle,
 } from './settings';
 import { parseAnnotations, Annotation } from './parser';
-import { createCommentViewPlugin } from './decoration';
+import { createCommentViewPlugin, createCitationViewPlugin } from './decoration';
 import { AnnotationSidebarView, SIDEBAR_VIEW_TYPE } from './sidebar';
 import { parseBibFile, BibEntry } from './bibtex';
 
@@ -43,6 +43,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 		this.registerExtensions(['bib'], BIB_VIEW_TYPE);
 
 		this.registerEditorExtension(createCommentViewPlugin(this));
+		this.registerEditorExtension(createCitationViewPlugin(this));
 		this.registerMarkdownPostProcessor((el) => this.processReadingView(el));
 
 		this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new AnnotationSidebarView(leaf, this));
@@ -333,6 +334,12 @@ export default class AnnotationManagerPlugin extends Plugin {
 			rules.push(`.nav-file:has(.nav-file-title[data-path$=".bib"]) { display: none !important; }`);
 		}
 
+		// Citation color
+		if (this.settings.citationColor) {
+			rules.push(`.cc-citation { color: ${this.settings.citationColor} !important; }`);
+			rules.push(`.cm-editor .cm-content .cm-line .cc-citation { color: ${this.settings.citationColor} !important; }`);
+		}
+
 		// Neutral baseline (injected after Obsidian's CSS, wins equal-specificity !important conflicts
 		// by source order). Prevents CM6 link/bracket coloring on annotation spans.
 		rules.push(`.cm-editor .cm-content .cm-line .cc-annotation-editor { color: var(--text-normal) !important; }`);
@@ -380,7 +387,8 @@ export default class AnnotationManagerPlugin extends Plugin {
 		if (!this.syntaxHidingEnabled) return;
 		if (!el.innerHTML.includes('{=')) return;
 
-		const pattern = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}([\s\S]*?)=\}/g;
+		const annotationPattern = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}([\s\S]*?)=\}/g;
+		const citationPattern = /\{=\/\{([^/}]+)\/=\}/g;
 		const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
 		const toReplace: Text[] = [];
 		let node: Node | null;
@@ -397,8 +405,8 @@ export default class AnnotationManagerPlugin extends Plugin {
 			if (parent.tagName === 'CODE' || parent.tagName === 'PRE') continue;
 
 			const span = document.createElement('span');
-			span.innerHTML = (textNode.nodeValue ?? '').replace(
-				pattern,
+			let html = (textNode.nodeValue ?? '').replace(
+				annotationPattern,
 				(_match, p: string, c: string | undefined, content: string) => {
 					const cls = this.textFormattingEnabled
 						? resolvedClass(p, c ?? '', this.settings.identifierStyles)
@@ -407,6 +415,12 @@ export default class AnnotationManagerPlugin extends Plugin {
 					return `<span class="${className}">${content.trim()}</span>`;
 				},
 			);
+			if (this.settings.citationColor) {
+				html = html.replace(citationPattern, (match) =>
+					`<span class="cc-citation">${match}</span>`
+				);
+			}
+			span.innerHTML = html;
 			parent.replaceChild(span, textNode);
 		}
 	}
