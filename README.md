@@ -2,6 +2,12 @@
 
 Annotate text inline in Obsidian, view all annotations in a unified sidebar, style them with custom colors, query them with Dataview, and attach bibliographic citations from BibTeX files.
 
+---
+
+<img src="text_source.png" width="200" />
+
+---
+
 ![Source](text_source.png)
 ![Preview](text_previewCite.png)
 ![Reading](text_preview.png)
