@@ -13,22 +13,22 @@
       "bibFile": "ToRead.bib"
     },
     "stats": {
-      "fontColor": "#f5b761",
+      "fontColor": "#2d19e0",
       "backgroundColor": "",
       "fontSize": "",
-      "bibFile": "ToRead.bib"
+      "bibFile": "Math.bib"
     },
     "stats/chi": {
       "fontColor": "#b3f2c4",
       "backgroundColor": "#a5d7f2",
       "fontSize": "",
-      "bibFile": "ToRead.bib"
+      "bibFile": "Math.bib"
     },
     "stats/ttest": {
       "fontColor": "#e31212",
       "backgroundColor": "#fbfce3",
       "fontSize": "",
-      "bibFile": "ToRead.bib"
+      "bibFile": "Math.bib"
     }
   },
   "configSource": "file",
