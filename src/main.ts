@@ -20,10 +20,11 @@ const STYLE_EL_ID = 'annotation-manager-styles';
 export default class AnnotationManagerPlugin extends Plugin {
 	settings: AnnotationManagerSettings;
 	styleVersion = 0;
-	// Three independent display toggles (all ON by default)
+	// Four independent display toggles (all ON by default)
 	syntaxHidingEnabled = true;         // hides {={id} and =} delimiters in LP / Reading View
 	identifierFormattingEnabled = true; // applies custom color to the bracket+identifier portion
 	textFormattingEnabled = true;       // applies custom color to the annotation text content
+	citationVisibilityEnabled = true;   // shows/hides {=/{key}/=} citation markers
 
 	lastUsedIdentifier: string | null = null;
 
@@ -127,6 +128,16 @@ export default class AnnotationManagerPlugin extends Plugin {
 				this.textFormattingEnabled = !this.textFormattingEnabled;
 				this.bumpStyleVersion();
 				new Notice(`Annotation text formatting ${this.textFormattingEnabled ? 'enabled' : 'disabled'}`);
+			},
+		});
+
+		this.addCommand({
+			id: 'toggle-citation-visibility',
+			name: 'Toggle citation visibility',
+			callback: () => {
+				this.citationVisibilityEnabled = !this.citationVisibilityEnabled;
+				this.bumpStyleVersion();
+				new Notice(`Citations ${this.citationVisibilityEnabled ? 'visible' : 'hidden'}`);
 			},
 		});
 
@@ -415,7 +426,9 @@ export default class AnnotationManagerPlugin extends Plugin {
 					return `<span class="${className}">${content.trim()}</span>`;
 				},
 			);
-			if (this.settings.citationColor) {
+			if (!this.citationVisibilityEnabled) {
+				html = html.replace(citationPattern, () => `<span class="cc-hide"></span>`);
+			} else if (this.settings.citationColor) {
 				html = html.replace(citationPattern, (match) =>
 					`<span class="cc-citation">${match}</span>`
 				);

@@ -678,8 +678,10 @@ function createCitationViewPlugin(plugin) {
 function buildCitationDecorations(view, plugin) {
   var _a, _b;
   const builder = new import_state.RangeSetBuilder();
-  if (!plugin.settings.citationColor) return builder.finish();
-  const mark = import_view.Decoration.mark({ class: "cc-citation" });
+  const shouldHide = !plugin.citationVisibilityEnabled;
+  const shouldColor = plugin.citationVisibilityEnabled && !!plugin.settings.citationColor;
+  if (!shouldHide && !shouldColor) return builder.finish();
+  const mark = shouldHide ? HIDE : import_view.Decoration.mark({ class: "cc-citation" });
   for (const { from, to } of view.visibleRanges) {
     const text = view.state.doc.sliceString(from, to);
     const codeRanges = getCodeRanges2(text);
@@ -936,13 +938,15 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
   constructor() {
     super(...arguments);
     this.styleVersion = 0;
-    // Three independent display toggles (all ON by default)
+    // Four independent display toggles (all ON by default)
     this.syntaxHidingEnabled = true;
     // hides {={id} and =} delimiters in LP / Reading View
     this.identifierFormattingEnabled = true;
     // applies custom color to the bracket+identifier portion
     this.textFormattingEnabled = true;
     // applies custom color to the annotation text content
+    this.citationVisibilityEnabled = true;
+    // shows/hides {=/{key}/=} citation markers
     this.lastUsedIdentifier = null;
     this.fileAnnotations = /* @__PURE__ */ new Map();
     this.debouncedRefresh = (0, import_obsidian3.debounce)(() => this._refreshSidebar(), 150, true);
@@ -1032,6 +1036,15 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
         this.textFormattingEnabled = !this.textFormattingEnabled;
         this.bumpStyleVersion();
         new import_obsidian3.Notice(`Annotation text formatting ${this.textFormattingEnabled ? "enabled" : "disabled"}`);
+      }
+    });
+    this.addCommand({
+      id: "toggle-citation-visibility",
+      name: "Toggle citation visibility",
+      callback: () => {
+        this.citationVisibilityEnabled = !this.citationVisibilityEnabled;
+        this.bumpStyleVersion();
+        new import_obsidian3.Notice(`Citations ${this.citationVisibilityEnabled ? "visible" : "hidden"}`);
       }
     });
     this.addCommand({
@@ -1271,7 +1284,9 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
           return `<span class="${className}">${content.trim()}</span>`;
         }
       );
-      if (this.settings.citationColor) {
+      if (!this.citationVisibilityEnabled) {
+        html = html.replace(citationPattern, () => `<span class="cc-hide"></span>`);
+      } else if (this.settings.citationColor) {
         html = html.replace(
           citationPattern,
           (match) => `<span class="cc-citation">${match}</span>`

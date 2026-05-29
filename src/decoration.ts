@@ -185,9 +185,11 @@ export function createCitationViewPlugin(plugin: AnnotationManagerPlugin) {
 
 function buildCitationDecorations(view: EditorView, plugin: AnnotationManagerPlugin): DecorationSet {
 	const builder = new RangeSetBuilder<Decoration>();
-	if (!plugin.settings.citationColor) return builder.finish();
+	const shouldHide = !plugin.citationVisibilityEnabled;
+	const shouldColor = plugin.citationVisibilityEnabled && !!plugin.settings.citationColor;
+	if (!shouldHide && !shouldColor) return builder.finish();
 
-	const mark = Decoration.mark({ class: 'cc-citation' });
+	const mark = shouldHide ? HIDE : Decoration.mark({ class: 'cc-citation' });
 
 	for (const { from, to } of view.visibleRanges) {
 		const text = view.state.doc.sliceString(from, to);
