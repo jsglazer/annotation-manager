@@ -1,10 +1,6 @@
 # Annotation Manager
 
-Annotate text inline using the syntax
-```
-{={identifier}text }
-```
-Then view and navigate all annotations from a unified sidebar. Annotations can be styled with custom colors and font sizes, and are exposed to Dataview as structured metadata.
+Annotate text inline in Obsidian, view all annotations in a unified sidebar, style them with custom colors, query them with Dataview, and attach bibliographic citations from BibTeX files.
 
 ![Source](text_source.png)
 ![Preview](text_preview.png)
@@ -15,266 +11,46 @@ Then view and navigate all annotations from a unified sidebar. Annotations can b
 ## What it does
 
 - **Inline annotations** — wrap any text in `{={parent/child}your note=}` to tag it with an identifier
-- **Live Preview rendering** — delimiters and identifier are hidden; only the annotated text is shown (optionally styled)
-- **Annotations sidebar** — collects all annotations vault-wide, grouped by identifier, with one-click navigation to each source location
+- **Live Preview rendering** — delimiters and identifier are hidden; only the annotated text is shown, optionally styled
+- **Annotations sidebar** — collects all annotations vault-wide, grouped by identifier, with one-click navigation
 - **Custom styling** — assign font color, background color, and font size to any identifier or wildcard pattern
+- **Citations** — insert BibTeX citation keys from `.bib` files immediately after an annotation
 - **Dataview integration** — annotations are exposed as a `cc` field on each note's page object
-- **Config file support** — define identifier styles in a Markdown table in your vault instead of the settings UI
-- **Citation insertion** — insert bibliographic citation keys from `.bib` files (BibTeX format) immediately after an annotation
+- **Config file support** — define identifier styles in a Markdown table in your vault
 
 ---
 
-## Citation syntax
-
-Citations are inserted immediately after an annotation closing tag and reference a BibTeX entry key:
-
-```
-{={math/hot}every non-vertical line=}{=/{alderdiceWhatFuturePeace}/=}
-```
-
-- The citation marker is `{=/{key}/=}` where `key` is the BibTeX entry key (e.g. `alderdiceWhatFuturePeace`)
-- Use the **Insert citation** command to pick a `.bib` file and key from a searchable list
-- If the cursor is placed immediately after a closing `=}`, the `.bib` file associated with that annotation style is listed first
-
----
-
-## Annotation syntax
-
-```
-{={identifier}annotated text=}
-{={parent/child}annotated text=}
-```
-
-- `identifier` — a plain parent identifier, e.g. `{={note}this is important=}`
-- `parent/child` — a two-level identifier, e.g. `{={math/hot}key formula=}`
-- Wildcards in style config: `math/*` matches any `math/child` annotation
-
-> [!info] Do not leave a space between the identifier and the text!
-
-**Examples**
+## Quick start
 
 ```
 The function {={note}converges in O(n log n)=} for all inputs.
 This approach {={math/hot}maximizes the posterior=} under the prior.
-The sample statistic {={stats}is an unbiased estimator=} of the mean.
 ```
 
-> **Note**: Do not place annotations inside inline code `` `...` `` or fenced code blocks — the plugin skips those regions.
+1. Write an annotation using `{={identifier}text=}` syntax
+2. Open the sidebar via the **message-square** ribbon icon
+3. Add styling under **Settings → Annotation Manager → Add Identifier**
 
 ---
 
-## Configuration options
+## Documentation (Wiki)
 
-Open **Settings → Annotation Manager** to configure the plugin.
+Full documentation is in the [GitHub Wiki](https://github.com/jsglazer/annotation-manager/wiki):
 
-### Bibliography
-
-| Option | Description |
-| --- | --- |
-| **Bib files folder** | Vault-relative path to the folder containing `.bib` files (e.g. `Meta/Bibs`). **Required** before the Insert Citation command can be used. |
-| **Show .bib files in file browser** | When enabled (default), the plugin enables Obsidian's **Show all file types** setting so `.bib` files appear in the file explorer. When disabled, `.bib` files are hidden from the file explorer via CSS. |
-
-> [!warning] When "Show .bib files in file browser" is enabled, the plugin programmatically sets Obsidian's **Show all file types** option to `on`. This affects all non-native file types in your vault, not just `.bib` files. You may need to reopen the file explorer or restart Obsidian for the change to take effect.
-
-Each identifier style can also have an associated `.bib` file (e.g. `ToRead.bib`). When you invoke **Insert citation** with the cursor immediately after an annotation that uses that style, its linked `.bib` file appears at the top of the file picker.
-
-### Config source
-
-| Option | Description |
-| --- | --- |
-| **Settings UI** | Define identifier styles directly in the settings panel |
-| **Config file** | Read styles from a Markdown table in your vault |
-
-When **Config file** is selected, specify a vault-relative path (default: `OccConfig.md`) and use the **Create / update config file** button to generate the file from your current settings. The plugin auto-reloads styles whenever the file is saved.
-
-### Config file table format
-
-```markdown
-| Identifier | Font Color | Background Color | Font Size | Bib File   | Example |
-| ---------- | ---------- | ---------------- | --------- | ---------- | ------- |
-| math/hot   | ff6b6b     | fff0f0           | 1.1em     | Math.bib   | <span style="color: #ff6b6b; background-color: #fff0f0; font-size: 1.1em">Example</span> |
-| math/*     | 4ecdc4     |                  |           |            | <span style="color: #4ecdc4">Example</span> |
-| stats      | ffd93d     | fffbe6           |           | ToRead.bib | <span style="color: #ffd93d; background-color: #fffbe6">Example</span> |
-```
-
-- Column order must match: Identifier, Font Color, Background Color, Font Size, Bib File, Example
-- Do not use the `#` prefix for hex colors (i.e. only `ff6b6b` is accepted)
-- Leave a cell blank to inherit the default value
-- Font size accepts any CSS value: `1.1em`, `14px`, `0.9rem`, etc.
-- **Bib File**: optional `.bib` filename (just the filename, e.g. `ToRead.bib`) to associate with this identifier
-- The **Example** column is auto-generated when you use **Create / update config file** — it renders a styled preview of each identifier directly in the table
-
----
-
-## How to customize identifiers (Settings UI mode)
-
-1. Open **Settings → Annotation Manager**
-2. Under **Add Identifier**, enter the identifier name (e.g. `math/hot` or `stats`) and click **Add**
-3. Set the desired **Font color**, **Background color**, and/or **Font size**
-4. Changes apply immediately to all open editors and Reading View panes
-
-**Wildcard styles** — enter `math/*` to style all `math/child` annotations that don't have their own specific style. Specific identifiers always take precedence over wildcards.
-
----
-
-## Using the annotations sidebar
-
-Open the sidebar via:
-- The **message-square ribbon icon** on the left (or right) sidebar
-- The command **Show annotations sidebar**
-
-The sidebar lists every annotation in the vault, grouped by identifier. Each entry shows a preview of the annotation text and the file + line number where it appears. Click any entry to open that file and jump to the annotation.
-
-Use **Expand All** / **Collapse All** to show or hide all groups at once. Individual groups can be toggled by clicking their header row. Collapse state is preserved across re-renders within a session.
-
----
-
-## All commands
-
-| Command                                             | Description                                                                                                         |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| **Show annotations sidebar**                        | Toggle the CC annotations sidebar open/closed                                                                       |
-| **Apply identifier to selection**                   | Open a picker to wrap selected text (or insert a blank annotation at cursor) with a chosen identifier               |
-| **Insert citation**                                 | Insert a BibTeX citation key after an annotation. Pick a `.bib` file then a citation key from a searchable list. If the cursor is right after an annotation, its linked `.bib` file appears first. |
-| **Toggle bracket/identifier visibility** | Show or hide the `{={id}` and `=}` delimiters in Live Preview and Reading View                                      |
-| **Toggle bracket/identifier formatting** | Enable or disable custom colors on the bracket and identifier portion (visible in Source Mode)                      |
-| **Toggle text formatting**                          | Enable or disable custom colors on the annotation text content                                                      |
-
----
-
-## Dataview integration
-
-When the Dataview plugin is enabled, each note gets a `cc` field containing an array of annotation objects — one per annotation found in that note.
-
-Each object has five properties:
-- `parent` — the parent part of the identifier (e.g. `math`)
-- `child` — the child part (e.g. `hot`), or an empty string if none
-- `text` — the annotation content
-- `line` — the 1-based line number where the annotation appears in the file
-- `citation` — the BibTeX key from a `{=/{key}/=}` marker immediately following the annotation, or an empty string
-
-### Example — Dataview (DQL)
-
-Show all `math/hot` and `stats` annotations across the vault as a table:
-```
-dataview
-TABLE rows.c.parent AS Parent, rows.c.child AS Child, rows.c.text AS "Annotation"
-FROM ""
-FLATTEN cc AS c
-WHERE (c.parent = "math" AND c.child = "hot") OR c.parent = "stats"
-GROUP BY file.link AS File
-```
-### Example — DataviewJS
-
-Show all `math/hot` and `stats` annotations across the vault as a table, with a header, clickable line numbers, citation keys, and sorted by Note → Identifier → Line → Annotation:
-
-```javascript
-dataviewjs
-const targets = [
-  { parent: 'math', child: 'hot' },
-  { parent: 'stats', child: '' },
-];
-
-function matches(ann, t) {
-  return String(ann.parent) === t.parent && String(ann.child) === t.child;
-}
-
-const terms = targets.map(t => t.child ? (t.parent + '/' + t.child) : t.parent);
-dv.header(2, 'Annotations for ' + terms.join(' and '));
-
-function lineLink(filePath, line) {
-  const el = document.createElement('a');
-  el.textContent = String(line);
-  el.href = '#';
-  el.classList.add('internal-link');
-  el.addEventListener('click', async (e) => {
-    e.preventDefault();
-    const file = app.vault.getAbstractFileByPath(filePath);
-    if (!file) return;
-    const leaf = app.workspace.getLeaf(false);
-    await leaf.openFile(file);
-    const view = leaf.view;
-    if (view?.editor) {
-      const pos = { line: line - 1, ch: 0 };
-      view.editor.setCursor(pos);
-      view.editor.scrollIntoView({ from: pos, to: pos }, true);
-    }
-  });
-  return el;
-}
-
-const rows = [];
-for (const page of dv.pages().where(p => p.cc)) {
-  for (const rawAnn of page.cc) {
-    const ann = {
-      parent: String(rawAnn.parent ?? ''),
-      child: String(rawAnn.child ?? ''),
-      text: String(rawAnn.text ?? ''),
-      line: rawAnn.line ? Number(rawAnn.line) : null,
-      citation: String(rawAnn.citation ?? ''),
-    };
-    if (targets.some(t => matches(ann, t))) {
-      const id = ann.child ? (ann.parent + '/' + ann.child) : ann.parent;
-      rows.push({
-        note: page.file.name,
-        link: page.file.link,
-        filePath: page.file.path,
-        id,
-        line: ann.line,
-        text: ann.text,
-        citation: ann.citation,
-      });
-    }
-  }
-}
-
-rows.sort((a, b) => {
-  if (a.note !== b.note) return a.note.localeCompare(b.note);
-  if (a.id !== b.id) return a.id.localeCompare(b.id);
-  if (a.line !== b.line) {
-    if (a.line == null) return 1;
-    if (b.line == null) return -1;
-    return a.line - b.line;
-  }
-  return String(a.text).localeCompare(String(b.text));
-});
-
-dv.table(
-  ['Note', 'Identifier', 'Line', 'Annotation', 'Citation'],
-  rows.map(r => [r.link, r.id, r.line ? lineLink(r.filePath, r.line) : '', r.text, r.citation])
-);
-```
-
-### Example — DataviewJS bibliography table
-
-List every `.bib` file in your configured folder as a level-2 header, with a table of entries (key, author, year, title) sorted alphabetically:
-
-```javascript
-dataviewjs
-const plugin = app.plugins.plugins['annotation-manager'];
-if (!plugin) { dv.paragraph('Annotation Manager plugin not found.'); return; }
-
-const bibData = await plugin.getBibEntries();
-const sorted = [...bibData.entries()].sort(([a], [b]) => a.localeCompare(b));
-
-for (const [filename, entries] of sorted) {
-  dv.header(2, filename);
-  if (entries.length === 0) { dv.paragraph('No entries found.'); continue; }
-  dv.table(
-    ['Key', 'Author', 'Year', 'Title'],
-    entries.map(e => [e.key, e.author, e.year, e.title])
-  );
-}
-```
+- [Home](https://github.com/jsglazer/annotation-manager/wiki) — overview and quick start
+- [Annotations](https://github.com/jsglazer/annotation-manager/wiki/Annotations) — syntax, styling, sidebar, commands
+- [Citations](https://github.com/jsglazer/annotation-manager/wiki/Citations) — BibTeX workflow, Zotero integration, settings
+- [DataviewJS Examples](https://github.com/jsglazer/annotation-manager/wiki/DataviewJS-Examples) — querying annotations and bibliography
 
 ---
 
 ## Notes
-- This plugin has been tested with the built-in and Minimal themes only.
-- Annotations are parsed from raw Markdown, so they work in both Live Preview and Source Mode
-- The `{= and =}` delimiters are hidden only in Live Preview and Reading View; they are always visible in Source Mode
-- When **bracket visibility** is toggled off, annotations display as raw text in Reading View and are not styled
-- Avoid =} in annotation content — the lazy match will truncate the annotation at the first `=}` it finds
-- Custom colors are applied via inline styles, which override CM6 syntax highlighting
 
-Written by Claude!
+- Tested with the built-in and Minimal themes only
+- Annotations work in both Live Preview and Source Mode
+- Avoid `=}` inside annotation text — the parser truncates at the first one it finds
+- Do not place annotations inside inline code or fenced code blocks
+
+---
+
+*Written by Claude!*
