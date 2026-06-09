@@ -119,13 +119,8 @@ export default class AnnotationManagerPlugin extends Plugin {
 			name: 'Toggle bracket/identifier formatting',
 			callback: () => {
 				this.identifierFormattingEnabled = !this.identifierFormattingEnabled;
-				// In LP mode the identifier is hidden; also toggle text formatting so
-				// the command has a visible effect regardless of syntax-hiding state.
-				if (this.syntaxHidingEnabled) {
-					this.textFormattingEnabled = this.identifierFormattingEnabled;
-				}
 				this.bumpStyleVersion();
-				new Notice(`Annotation formatting ${this.identifierFormattingEnabled ? 'enabled' : 'disabled'}`);
+				new Notice(`Annotation bracket/identifier formatting ${this.identifierFormattingEnabled ? 'enabled' : 'disabled'}`);
 			},
 		});
 
