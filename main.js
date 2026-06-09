@@ -1025,8 +1025,11 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
       name: "Toggle bracket/identifier formatting",
       callback: () => {
         this.identifierFormattingEnabled = !this.identifierFormattingEnabled;
+        if (this.syntaxHidingEnabled) {
+          this.textFormattingEnabled = this.identifierFormattingEnabled;
+        }
         this.bumpStyleVersion();
-        new import_obsidian3.Notice(`Annotation bracket/identifier formatting ${this.identifierFormattingEnabled ? "enabled" : "disabled"}`);
+        new import_obsidian3.Notice(`Annotation formatting ${this.identifierFormattingEnabled ? "enabled" : "disabled"}`);
       }
     });
     this.addCommand({
@@ -1277,6 +1280,8 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
       const view = leaf.view;
       if (view instanceof import_obsidian3.MarkdownView) {
         view.previewMode.rerender(true);
+        const cm = view.editor.cm;
+        if (cm == null ? void 0 : cm.dispatch) cm.dispatch({});
       }
     });
   }

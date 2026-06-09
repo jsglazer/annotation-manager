@@ -116,8 +116,13 @@ export default class AnnotationManagerPlugin extends Plugin {
 			name: 'Toggle bracket/identifier formatting',
 			callback: () => {
 				this.identifierFormattingEnabled = !this.identifierFormattingEnabled;
+				// In LP mode the identifier is hidden; also toggle text formatting so
+				// the command has a visible effect regardless of syntax-hiding state.
+				if (this.syntaxHidingEnabled) {
+					this.textFormattingEnabled = this.identifierFormattingEnabled;
+				}
 				this.bumpStyleVersion();
-				new Notice(`Annotation bracket/identifier formatting ${this.identifierFormattingEnabled ? 'enabled' : 'disabled'}`);
+				new Notice(`Annotation formatting ${this.identifierFormattingEnabled ? 'enabled' : 'disabled'}`);
 			},
 		});
 
@@ -416,6 +421,9 @@ export default class AnnotationManagerPlugin extends Plugin {
 			const view = leaf.view;
 			if (view instanceof MarkdownView) {
 				view.previewMode.rerender(true);
+				// Dispatch a no-op transaction so CM ViewPlugins re-evaluate decorations.
+				const cm = (view.editor as any).cm;
+				if (cm?.dispatch) cm.dispatch({});
 			}
 		});
 	}
