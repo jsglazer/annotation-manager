@@ -1,4 +1,4 @@
-import { App, debounce, Editor, FileView, MarkdownView, Notice, Plugin, setIcon, SuggestModal, TFile, WorkspaceLeaf } from 'obsidian';
+import { App, debounce, Editor, FileView, MarkdownView, Menu, Notice, Plugin, setIcon, SuggestModal, TFile, WorkspaceLeaf } from 'obsidian';
 import {
 	AnnotationManagerSettings,
 	AnnotationManagerSettingTab,
@@ -180,6 +180,44 @@ export default class AnnotationManagerPlugin extends Plugin {
 				}).open();
 			},
 		});
+
+		this.registerEvent(
+			this.app.workspace.on('editor-menu', (menu: Menu, editor: Editor) => {
+				const selected = editor.getSelection();
+				if (!selected) return;
+
+				const ids = this.collectIdentifiers();
+				if (ids.length === 0) return;
+
+				menu.addSeparator();
+
+				for (const id of ids) {
+					menu.addItem(item => {
+						const slashIdx = id.indexOf('/');
+						const parent = slashIdx !== -1 ? id.slice(0, slashIdx) : id;
+						const child = slashIdx !== -1 ? id.slice(slashIdx + 1) : '';
+						const style = resolvedStyle(parent, child, this.settings.identifierStyles);
+
+						const frag = createFragment();
+						const row = frag.createDiv({ cls: 'cc-menu-row' });
+
+						const swatch = row.createEl('span', { cls: 'cc-menu-swatch', text: 'Aa' });
+						if (style?.fontColor) swatch.style.color = style.fontColor;
+						if (style?.backgroundColor) swatch.style.backgroundColor = style.backgroundColor;
+						if (!style?.fontColor && !style?.backgroundColor) {
+							swatch.addClass('cc-menu-swatch-plain');
+						}
+						row.createEl('span', { cls: 'cc-menu-id-label', text: id });
+
+						item.setTitle(frag);
+						item.onClick(() => {
+							this.lastUsedIdentifier = id;
+							editor.replaceSelection(`{={${id}}${selected}=}`);
+						});
+					});
+				}
+			}),
+		);
 
 		this.app.workspace.onLayoutReady(async () => {
 			await this.indexAllFiles();
@@ -392,6 +430,19 @@ export default class AnnotationManagerPlugin extends Plugin {
 				view.previewMode.rerender(true);
 			}
 		});
+	}
+
+	private collectIdentifiers(): string[] {
+		const ids = new Set<string>();
+		for (const key of Object.keys(this.settings.identifierStyles)) {
+			if (!key.endsWith('/*')) ids.add(key);
+		}
+		for (const anns of this.fileAnnotations.values()) {
+			for (const ann of anns) {
+				ids.add(ann.child ? `${ann.parent}/${ann.child}` : ann.parent);
+			}
+		}
+		return [...ids].sort();
 	}
 
 	private processReadingView(el: HTMLElement) {

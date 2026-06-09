@@ -1082,6 +1082,37 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
         }).open();
       }
     });
+    this.registerEvent(
+      this.app.workspace.on("editor-menu", (menu, editor) => {
+        const selected = editor.getSelection();
+        if (!selected) return;
+        const ids = this.collectIdentifiers();
+        if (ids.length === 0) return;
+        menu.addSeparator();
+        for (const id of ids) {
+          menu.addItem((item) => {
+            const slashIdx = id.indexOf("/");
+            const parent = slashIdx !== -1 ? id.slice(0, slashIdx) : id;
+            const child = slashIdx !== -1 ? id.slice(slashIdx + 1) : "";
+            const style = resolvedStyle(parent, child, this.settings.identifierStyles);
+            const frag = createFragment();
+            const row = frag.createDiv({ cls: "cc-menu-row" });
+            const swatch = row.createEl("span", { cls: "cc-menu-swatch", text: "Aa" });
+            if (style == null ? void 0 : style.fontColor) swatch.style.color = style.fontColor;
+            if (style == null ? void 0 : style.backgroundColor) swatch.style.backgroundColor = style.backgroundColor;
+            if (!(style == null ? void 0 : style.fontColor) && !(style == null ? void 0 : style.backgroundColor)) {
+              swatch.addClass("cc-menu-swatch-plain");
+            }
+            row.createEl("span", { cls: "cc-menu-id-label", text: id });
+            item.setTitle(frag);
+            item.onClick(() => {
+              this.lastUsedIdentifier = id;
+              editor.replaceSelection(`{={${id}}${selected}=}`);
+            });
+          });
+        }
+      })
+    );
     this.app.workspace.onLayoutReady(async () => {
       await this.indexAllFiles();
       if (this.settings.configSource === "file") {
@@ -1256,6 +1287,18 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
         view.previewMode.rerender(true);
       }
     });
+  }
+  collectIdentifiers() {
+    const ids = /* @__PURE__ */ new Set();
+    for (const key of Object.keys(this.settings.identifierStyles)) {
+      if (!key.endsWith("/*")) ids.add(key);
+    }
+    for (const anns of this.fileAnnotations.values()) {
+      for (const ann of anns) {
+        ids.add(ann.child ? `${ann.parent}/${ann.child}` : ann.parent);
+      }
+    }
+    return [...ids].sort();
   }
   processReadingView(el) {
     var _a, _b;
