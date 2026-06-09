@@ -212,10 +212,13 @@ export function createCommentViewPlugin(plugin: AnnotationManagerPlugin) {
 		class {
 			decorations: DecorationSet;
 			private lastStyleVersion: number;
+			private readonly cmView: EditorView;
 
 			constructor(view: EditorView) {
+				this.cmView = view;
 				this.lastStyleVersion = plugin.styleVersion;
 				this.decorations = buildDecorations(view, plugin);
+				plugin.editorViews.add(view);
 			}
 
 			update(update: ViewUpdate) {
@@ -224,6 +227,10 @@ export function createCommentViewPlugin(plugin: AnnotationManagerPlugin) {
 					this.lastStyleVersion = plugin.styleVersion;
 					this.decorations = buildDecorations(update.view, plugin);
 				}
+			}
+
+			destroy() {
+				plugin.editorViews.delete(this.cmView);
 			}
 		},
 		{ decorations: v => v.decorations },

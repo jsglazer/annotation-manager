@@ -11,6 +11,7 @@ import {
 	resolvedStyle,
 } from './settings';
 import { parseAnnotations, Annotation } from './parser';
+import { EditorView } from '@codemirror/view';
 import { createCommentViewPlugin, createCitationViewPlugin } from './decoration';
 import { AnnotationSidebarView, SIDEBAR_VIEW_TYPE } from './sidebar';
 import { parseBibFile, BibEntry } from './bibtex';
@@ -27,6 +28,8 @@ export default class AnnotationManagerPlugin extends Plugin {
 	citationVisibilityEnabled = true;   // shows/hides {=/{key}/=} citation markers
 
 	lastUsedIdentifier: string | null = null;
+
+	readonly editorViews = new Set<EditorView>();
 
 	private fileAnnotations: Map<string, Annotation[]> = new Map();
 	private debouncedRefresh = debounce(() => this._refreshSidebar(), 150, true);
@@ -418,14 +421,15 @@ export default class AnnotationManagerPlugin extends Plugin {
 		this.updateStyleSheet();
 		this.app.workspace.updateOptions();
 		this.app.workspace.iterateAllLeaves(leaf => {
-			const view = leaf.view;
-			if (view instanceof MarkdownView) {
-				view.previewMode.rerender(true);
-				// Dispatch a no-op transaction so CM ViewPlugins re-evaluate decorations.
-				const cm = (view.editor as any).cm;
-				if (cm?.dispatch) cm.dispatch({});
+			if (leaf.view instanceof MarkdownView) {
+				leaf.view.previewMode.rerender(true);
 			}
 		});
+		// Dispatch a no-op transaction to every tracked CM editor so ViewPlugins
+		// detect the styleVersion bump and rebuild decorations immediately.
+		for (const view of this.editorViews) {
+			view.dispatch({});
+		}
 	}
 
 	private collectIdentifiers(): string[] {

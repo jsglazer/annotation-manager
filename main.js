@@ -700,8 +700,10 @@ function createCommentViewPlugin(plugin) {
   return import_view.ViewPlugin.fromClass(
     class {
       constructor(view) {
+        this.cmView = view;
         this.lastStyleVersion = plugin.styleVersion;
         this.decorations = buildDecorations(view, plugin);
+        plugin.editorViews.add(view);
       }
       update(update) {
         const styleChanged = plugin.styleVersion !== this.lastStyleVersion;
@@ -709,6 +711,9 @@ function createCommentViewPlugin(plugin) {
           this.lastStyleVersion = plugin.styleVersion;
           this.decorations = buildDecorations(update.view, plugin);
         }
+      }
+      destroy() {
+        plugin.editorViews.delete(this.cmView);
       }
     },
     { decorations: (v) => v.decorations }
@@ -948,6 +953,7 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
     this.citationVisibilityEnabled = true;
     // shows/hides {=/{key}/=} citation markers
     this.lastUsedIdentifier = null;
+    this.editorViews = /* @__PURE__ */ new Set();
     this.fileAnnotations = /* @__PURE__ */ new Map();
     this.debouncedRefresh = (0, import_obsidian3.debounce)(() => this._refreshSidebar(), 150, true);
     this.debouncedReloadConfig = (0, import_obsidian3.debounce)(() => {
@@ -1277,13 +1283,13 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
     this.updateStyleSheet();
     this.app.workspace.updateOptions();
     this.app.workspace.iterateAllLeaves((leaf) => {
-      const view = leaf.view;
-      if (view instanceof import_obsidian3.MarkdownView) {
-        view.previewMode.rerender(true);
-        const cm = view.editor.cm;
-        if (cm == null ? void 0 : cm.dispatch) cm.dispatch({});
+      if (leaf.view instanceof import_obsidian3.MarkdownView) {
+        leaf.view.previewMode.rerender(true);
       }
     });
+    for (const view of this.editorViews) {
+      view.dispatch({});
+    }
   }
   collectIdentifiers() {
     const ids = /* @__PURE__ */ new Set();
