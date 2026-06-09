@@ -263,33 +263,6 @@
 	background: var(--background-modifier-hover);
 }
 
-/* ── Editor context menu ────────────────────────────────────────────────── */
-
-.cc-menu-row {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
-
-.cc-menu-swatch {
-	display: inline-block;
-	padding: 0 4px;
-	border-radius: 3px;
-	font-size: 0.8em;
-	font-weight: 600;
-	min-width: 22px;
-	text-align: center;
-	line-height: 1.6;
-}
-
-.cc-menu-swatch-plain {
-	color: var(--text-muted);
-	background: var(--background-modifier-border);
-}
-
-.cc-menu-id-label {
-	font-size: 0.9em;
-}
 
 /* ── Bib file view hint ──────────────────────────────────────────────────── */
 

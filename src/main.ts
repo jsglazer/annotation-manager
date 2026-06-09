@@ -190,32 +190,20 @@ export default class AnnotationManagerPlugin extends Plugin {
 				if (ids.length === 0) return;
 
 				menu.addSeparator();
-
-				for (const id of ids) {
-					menu.addItem(item => {
-						const slashIdx = id.indexOf('/');
-						const parent = slashIdx !== -1 ? id.slice(0, slashIdx) : id;
-						const child = slashIdx !== -1 ? id.slice(slashIdx + 1) : '';
-						const style = resolvedStyle(parent, child, this.settings.identifierStyles);
-
-						const frag = createFragment();
-						const row = frag.createDiv({ cls: 'cc-menu-row' });
-
-						const swatch = row.createEl('span', { cls: 'cc-menu-swatch', text: 'Aa' });
-						if (style?.fontColor) swatch.style.color = style.fontColor;
-						if (style?.backgroundColor) swatch.style.backgroundColor = style.backgroundColor;
-						if (!style?.fontColor && !style?.backgroundColor) {
-							swatch.addClass('cc-menu-swatch-plain');
-						}
-						row.createEl('span', { cls: 'cc-menu-id-label', text: id });
-
-						item.setTitle(frag);
-						item.onClick(() => {
-							this.lastUsedIdentifier = id;
-							editor.replaceSelection(`{={${id}}${selected}=}`);
+				menu.addItem(item => {
+					item.setTitle('Annot Format');
+					item.setIcon('tag');
+					const submenu: Menu = (item as any).setSubmenu();
+					for (const id of ids) {
+						submenu.addItem((sub: any) => {
+							sub.setTitle(id);
+							sub.onClick(() => {
+								this.lastUsedIdentifier = id;
+								editor.replaceSelection(`{={${id}}${selected}=}`);
+							});
 						});
-					});
-				}
+					}
+				});
 			}),
 		);
 

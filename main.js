@@ -1089,28 +1089,20 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
         const ids = this.collectIdentifiers();
         if (ids.length === 0) return;
         menu.addSeparator();
-        for (const id of ids) {
-          menu.addItem((item) => {
-            const slashIdx = id.indexOf("/");
-            const parent = slashIdx !== -1 ? id.slice(0, slashIdx) : id;
-            const child = slashIdx !== -1 ? id.slice(slashIdx + 1) : "";
-            const style = resolvedStyle(parent, child, this.settings.identifierStyles);
-            const frag = createFragment();
-            const row = frag.createDiv({ cls: "cc-menu-row" });
-            const swatch = row.createEl("span", { cls: "cc-menu-swatch", text: "Aa" });
-            if (style == null ? void 0 : style.fontColor) swatch.style.color = style.fontColor;
-            if (style == null ? void 0 : style.backgroundColor) swatch.style.backgroundColor = style.backgroundColor;
-            if (!(style == null ? void 0 : style.fontColor) && !(style == null ? void 0 : style.backgroundColor)) {
-              swatch.addClass("cc-menu-swatch-plain");
-            }
-            row.createEl("span", { cls: "cc-menu-id-label", text: id });
-            item.setTitle(frag);
-            item.onClick(() => {
-              this.lastUsedIdentifier = id;
-              editor.replaceSelection(`{={${id}}${selected}=}`);
+        menu.addItem((item) => {
+          item.setTitle("Annot Format");
+          item.setIcon("tag");
+          const submenu = item.setSubmenu();
+          for (const id of ids) {
+            submenu.addItem((sub) => {
+              sub.setTitle(id);
+              sub.onClick(() => {
+                this.lastUsedIdentifier = id;
+                editor.replaceSelection(`{={${id}}${selected}=}`);
+              });
             });
-          });
-        }
+          }
+        });
       })
     );
     this.app.workspace.onLayoutReady(async () => {
