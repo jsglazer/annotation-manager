@@ -86,6 +86,15 @@ function stripHash(hex: string): string {
 	return hex.startsWith('#') ? hex.slice(1) : hex;
 }
 
+// fontSize is free text that ends up in the global stylesheet and inline style
+// attributes — restrict it to a plain CSS length (12px, 1.1em, 90%…) or a bare
+// keyword (large, x-small…) so it cannot inject additional declarations/rules.
+export function isValidFontSize(value: string): boolean {
+	const v = value.trim();
+	if (!v) return false;
+	return /^\d+(\.\d+)?(px|pt|em|rem|%|vh|vw)$/.test(v) || /^[a-zA-Z-]+$/.test(v);
+}
+
 export function parseConfigTable(content: string): Record<string, IdentifierStyle> {
 	const styles: Record<string, IdentifierStyle> = {};
 	const lines = content.split('\n');
@@ -116,7 +125,8 @@ export function parseConfigTable(content: string): Record<string, IdentifierStyl
 		const [name = '', fontColor = '', bgColor = '', fontSize = ''] = cols;
 		// 6-col format includes Bib File column before Example; 5-col is legacy
 		const bibFile = cols.length >= 6 ? (cols[4] ?? '').replace(/^\[|\]$/g, '').trim() : '';
-		if (!name) continue;
+		// Skip empty names and placeholder rows like "(no identifiers configured)"
+		if (!name || name.startsWith('(')) continue;
 
 		styles[name] = {
 			fontColor: normalizeHex(fontColor),
@@ -133,7 +143,7 @@ function makeExampleCell(style: IdentifierStyle): string {
 	const parts: string[] = [];
 	if (style.fontColor) parts.push(`color: ${style.fontColor}`);
 	if (style.backgroundColor) parts.push(`background-color: ${style.backgroundColor}`);
-	if (style.fontSize) parts.push(`font-size: ${style.fontSize}`);
+	if (isValidFontSize(style.fontSize)) parts.push(`font-size: ${style.fontSize.trim()}`);
 	if (parts.length === 0) return '';
 	return `<span style="${parts.join('; ')}">Example</span>`;
 }
@@ -242,18 +252,34 @@ function vaultMarkdownPaths(app: App, query: string): string[] {
 		.slice(0, 12);
 }
 
+// Dropdowns are appended to document.body, so they outlive their input if the
+// settings tab closes while one is open. Track open dropdowns globally and let
+// the settings tab close them on hide().
+const activeTypeaheadClosers = new Set<() => void>();
+
+export function closeAllTypeaheads(): void {
+	for (const close of [...activeTypeaheadClosers]) close();
+}
+
 function attachTypeahead(
 	input: HTMLInputElement,
 	getItems: (q: string) => string[],
 	onSelect: (v: string) => void,
 ): void {
 	let dropdown: HTMLElement | null = null;
+	let els: HTMLElement[] = [];
 	let activeIndex = -1;
 
 	function close() {
 		dropdown?.remove();
 		dropdown = null;
+		els = [];
 		activeIndex = -1;
+		activeTypeaheadClosers.delete(close);
+	}
+
+	function updateActive() {
+		els.forEach((el, i) => el.toggleClass('cc-typeahead-active', i === activeIndex));
 	}
 
 	function open(items: string[]) {
@@ -265,8 +291,9 @@ function attachTypeahead(
 		dropdown.style.top = (rect.bottom + window.scrollY) + 'px';
 		dropdown.style.left = (rect.left + window.scrollX) + 'px';
 		dropdown.style.width = rect.width + 'px';
+		activeTypeaheadClosers.add(close);
 
-		const els: HTMLElement[] = items.map(item => {
+		els = items.map(item => {
 			const el = dropdown!.createDiv({ cls: 'cc-typeahead-item', text: item });
 			el.addEventListener('mousedown', (e) => {
 				e.preventDefault();
@@ -276,19 +303,16 @@ function attachTypeahead(
 			});
 			return el;
 		});
-
-		function updateActive() {
-			els.forEach((el, i) => el.toggleClass('cc-typeahead-active', i === activeIndex));
-		}
-
-		input.onkeydown = (e) => {
-			if (!dropdown) return;
-			if (e.key === 'ArrowDown') { e.preventDefault(); activeIndex = Math.min(activeIndex + 1, els.length - 1); updateActive(); }
-			else if (e.key === 'ArrowUp') { e.preventDefault(); activeIndex = Math.max(activeIndex - 1, 0); updateActive(); }
-			else if (e.key === 'Enter' && activeIndex >= 0) { e.preventDefault(); const v = els[activeIndex]?.textContent ?? ''; input.value = v; onSelect(v); close(); }
-			else if (e.key === 'Escape') close();
-		};
 	}
+
+	// addEventListener (not input.onkeydown =) so other handlers on the input survive
+	input.addEventListener('keydown', (e) => {
+		if (!dropdown) return;
+		if (e.key === 'ArrowDown') { e.preventDefault(); activeIndex = Math.min(activeIndex + 1, els.length - 1); updateActive(); }
+		else if (e.key === 'ArrowUp') { e.preventDefault(); activeIndex = Math.max(activeIndex - 1, 0); updateActive(); }
+		else if (e.key === 'Enter' && activeIndex >= 0) { e.preventDefault(); const v = els[activeIndex]?.textContent ?? ''; input.value = v; onSelect(v); close(); }
+		else if (e.key === 'Escape') close();
+	});
 
 	input.addEventListener('input', () => {
 		const q = input.value.trim();
@@ -308,6 +332,10 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 	constructor(app: App, plugin: AnnotationManagerPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
+	}
+
+	hide(): void {
+		closeAllTypeaheads();
 	}
 
 	display(): void {

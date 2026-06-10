@@ -6,11 +6,12 @@ import {
 	ViewUpdate,
 } from '@codemirror/view';
 import { RangeSetBuilder } from '@codemirror/state';
-import { IdentifierStyle, resolvedClass, resolvedStyle } from './settings';
+import { IdentifierStyle, isValidFontSize, resolvedClass, resolvedStyle } from './settings';
 import AnnotationManagerPlugin from './main';
 
 // New syntax: {={parent/child}content=}  or  {={parent}content=}
-const PATTERN = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}(.*?)=\}/g;
+// [\s\S] keeps multi-line support consistent with Reading View and the parser.
+const PATTERN = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}([\s\S]*?)=\}/g;
 
 // Citation markers: {=/{key}/=}
 const CITATION_PATTERN = /\{=\/\{([^/}]+)\/=\}/g;
@@ -60,7 +61,7 @@ function makeColorMark(cls: string, style: IdentifierStyle | null): Decoration {
 	const parts: string[] = [];
 	if (style?.fontColor) parts.push(`color: ${style.fontColor}`);
 	if (style?.backgroundColor) parts.push(`background-color: ${style.backgroundColor}`);
-	if (style?.fontSize) parts.push(`font-size: ${style.fontSize}`);
+	if (style?.fontSize && isValidFontSize(style.fontSize)) parts.push(`font-size: ${style.fontSize.trim()}`);
 
 	const spec: { class: string; attributes?: Record<string, string> } = {
 		class: `cc-annotation-editor ${cls}`,
@@ -87,8 +88,16 @@ function addContentMarks(
 	if (lastPos < text.length) builder.add(docStart + lastPos, docEnd, mark);
 }
 
-function buildDecorations(view: EditorView, plugin: AnnotationManagerPlugin): DecorationSet {
+// Decorations plus the [start, end) doc ranges of the matched annotations, so
+// selection-only updates can skip rebuilding when no annotation is involved.
+interface BuiltDecorations {
+	decorations: DecorationSet;
+	annotationRanges: Array<[number, number]>;
+}
+
+function buildDecorations(view: EditorView, plugin: AnnotationManagerPlugin): BuiltDecorations {
 	const builder = new RangeSetBuilder<Decoration>();
+	const annotationRanges: Array<[number, number]> = [];
 	const { selection } = view.state;
 	const inLP = isLivePreview(view);
 
@@ -108,6 +117,7 @@ function buildDecorations(view: EditorView, plugin: AnnotationManagerPlugin): De
 
 			const start = from + relStart;
 			const end = from + relEnd;
+			annotationRanges.push([start, end]);
 
 			const parent = match[1] ?? '';
 			const child = match[2] ?? '';
@@ -157,7 +167,7 @@ function buildDecorations(view: EditorView, plugin: AnnotationManagerPlugin): De
 		}
 	}
 
-	return builder.finish();
+	return { decorations: builder.finish(), annotationRanges };
 }
 
 export function createCitationViewPlugin(plugin: AnnotationManagerPlugin) {
@@ -211,22 +221,38 @@ export function createCommentViewPlugin(plugin: AnnotationManagerPlugin) {
 	return ViewPlugin.fromClass(
 		class {
 			decorations: DecorationSet;
+			private annotationRanges: Array<[number, number]>;
 			private lastStyleVersion: number;
 			private readonly cmView: EditorView;
 
 			constructor(view: EditorView) {
 				this.cmView = view;
 				this.lastStyleVersion = plugin.styleVersion;
-				this.decorations = buildDecorations(view, plugin);
+				const built = buildDecorations(view, plugin);
+				this.decorations = built.decorations;
+				this.annotationRanges = built.annotationRanges;
 				plugin.editorViews.add(view);
 			}
 
 			update(update: ViewUpdate) {
 				const styleChanged = plugin.styleVersion !== this.lastStyleVersion;
-				if (update.docChanged || update.selectionSet || update.viewportChanged || styleChanged) {
+				const needsRebuild =
+					update.docChanged || update.viewportChanged || styleChanged ||
+					(update.selectionSet && this.selectionTouchesAnnotation(update));
+				if (needsRebuild) {
 					this.lastStyleVersion = plugin.styleVersion;
-					this.decorations = buildDecorations(update.view, plugin);
+					const built = buildDecorations(update.view, plugin);
+					this.decorations = built.decorations;
+					this.annotationRanges = built.annotationRanges;
 				}
+			}
+
+			// Selection-only updates matter only when the cursor enters or leaves an
+			// annotation (the cursorInside reveal logic); skip the rebuild otherwise.
+			private selectionTouchesAnnotation(update: ViewUpdate): boolean {
+				const touches = (ranges: readonly { from: number; to: number }[]) =>
+					ranges.some(r => this.annotationRanges.some(([a, b]) => r.from < b && r.to > a));
+				return touches(update.startState.selection.ranges) || touches(update.state.selection.ranges);
 			}
 
 			destroy() {

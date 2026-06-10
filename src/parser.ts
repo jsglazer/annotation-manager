@@ -9,7 +9,8 @@ export interface Annotation {
 }
 
 // New syntax: {={parent/child}content=}  or  {={parent}content=}
-const PATTERN = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}(.*?)=\}/g;
+// [\s\S] keeps multi-line support consistent with Reading View and the editor.
+const PATTERN = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}([\s\S]*?)=\}/g;
 
 // Citation marker immediately following an annotation: {=/{key}/=}
 const CITATION_RE = /^\{=\/\{([^/}]+)\/=\}/;

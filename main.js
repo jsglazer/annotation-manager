@@ -72,6 +72,11 @@ function normalizeHex(value) {
 function stripHash(hex) {
   return hex.startsWith("#") ? hex.slice(1) : hex;
 }
+function isValidFontSize(value) {
+  const v = value.trim();
+  if (!v) return false;
+  return /^\d+(\.\d+)?(px|pt|em|rem|%|vh|vw)$/.test(v) || /^[a-zA-Z-]+$/.test(v);
+}
 function parseConfigTable(content) {
   var _a;
   const styles = {};
@@ -93,7 +98,7 @@ function parseConfigTable(content) {
     const cols = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
     const [name = "", fontColor = "", bgColor = "", fontSize = ""] = cols;
     const bibFile = cols.length >= 6 ? ((_a = cols[4]) != null ? _a : "").replace(/^\[|\]$/g, "").trim() : "";
-    if (!name) continue;
+    if (!name || name.startsWith("(")) continue;
     styles[name] = {
       fontColor: normalizeHex(fontColor),
       backgroundColor: normalizeHex(bgColor),
@@ -107,7 +112,7 @@ function makeExampleCell(style) {
   const parts = [];
   if (style.fontColor) parts.push(`color: ${style.fontColor}`);
   if (style.backgroundColor) parts.push(`background-color: ${style.backgroundColor}`);
-  if (style.fontSize) parts.push(`font-size: ${style.fontSize}`);
+  if (isValidFontSize(style.fontSize)) parts.push(`font-size: ${style.fontSize.trim()}`);
   if (parts.length === 0) return "";
   return `<span style="${parts.join("; ")}">Example</span>`;
 }
@@ -191,13 +196,23 @@ function vaultMarkdownPaths(app, query) {
   const q = query.toLowerCase();
   return app.vault.getMarkdownFiles().map((f) => f.path).filter((p) => p.toLowerCase().includes(q)).sort().slice(0, 12);
 }
+var activeTypeaheadClosers = /* @__PURE__ */ new Set();
+function closeAllTypeaheads() {
+  for (const close of [...activeTypeaheadClosers]) close();
+}
 function attachTypeahead(input, getItems, onSelect) {
   let dropdown = null;
+  let els = [];
   let activeIndex = -1;
   function close() {
     dropdown == null ? void 0 : dropdown.remove();
     dropdown = null;
+    els = [];
     activeIndex = -1;
+    activeTypeaheadClosers.delete(close);
+  }
+  function updateActive() {
+    els.forEach((el, i) => el.toggleClass("cc-typeahead-active", i === activeIndex));
   }
   function open(items) {
     close();
@@ -207,7 +222,8 @@ function attachTypeahead(input, getItems, onSelect) {
     dropdown.style.top = rect.bottom + window.scrollY + "px";
     dropdown.style.left = rect.left + window.scrollX + "px";
     dropdown.style.width = rect.width + "px";
-    const els = items.map((item) => {
+    activeTypeaheadClosers.add(close);
+    els = items.map((item) => {
       const el = dropdown.createDiv({ cls: "cc-typeahead-item", text: item });
       el.addEventListener("mousedown", (e) => {
         e.preventDefault();
@@ -217,29 +233,26 @@ function attachTypeahead(input, getItems, onSelect) {
       });
       return el;
     });
-    function updateActive() {
-      els.forEach((el, i) => el.toggleClass("cc-typeahead-active", i === activeIndex));
-    }
-    input.onkeydown = (e) => {
-      var _a, _b;
-      if (!dropdown) return;
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        activeIndex = Math.min(activeIndex + 1, els.length - 1);
-        updateActive();
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        activeIndex = Math.max(activeIndex - 1, 0);
-        updateActive();
-      } else if (e.key === "Enter" && activeIndex >= 0) {
-        e.preventDefault();
-        const v = (_b = (_a = els[activeIndex]) == null ? void 0 : _a.textContent) != null ? _b : "";
-        input.value = v;
-        onSelect(v);
-        close();
-      } else if (e.key === "Escape") close();
-    };
   }
+  input.addEventListener("keydown", (e) => {
+    var _a, _b;
+    if (!dropdown) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, els.length - 1);
+      updateActive();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+      updateActive();
+    } else if (e.key === "Enter" && activeIndex >= 0) {
+      e.preventDefault();
+      const v = (_b = (_a = els[activeIndex]) == null ? void 0 : _a.textContent) != null ? _b : "";
+      input.value = v;
+      onSelect(v);
+      close();
+    } else if (e.key === "Escape") close();
+  });
   input.addEventListener("input", () => {
     const q = input.value.trim();
     if (!q) {
@@ -255,6 +268,9 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     super(app, plugin);
     this.pendingIdentifier = "";
     this.plugin = plugin;
+  }
+  hide() {
+    closeAllTypeaheads();
   }
   display() {
     const { containerEl } = this;
@@ -516,7 +532,7 @@ var VaultFileSuggestModal = class extends import_obsidian.FuzzySuggestModal {
 };
 
 // src/parser.ts
-var PATTERN = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}(.*?)=\}/g;
+var PATTERN = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}([\s\S]*?)=\}/g;
 var CITATION_RE = /^\{=\/\{([^/}]+)\/=\}/;
 function getCodeRanges(content) {
   const ranges = [];
@@ -562,7 +578,7 @@ function parseAnnotations(content) {
 // src/decoration.ts
 var import_view = require("@codemirror/view");
 var import_state = require("@codemirror/state");
-var PATTERN2 = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}(.*?)=\}/g;
+var PATTERN2 = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}([\s\S]*?)=\}/g;
 var CITATION_PATTERN = /\{=\/\{([^/}]+)\/=\}/g;
 var HIDE = import_view.Decoration.mark({ class: "cc-hide" });
 var NEUTRAL_MARK = import_view.Decoration.mark({ class: "cc-annotation-editor" });
@@ -590,7 +606,7 @@ function makeColorMark(cls, style) {
   const parts = [];
   if (style == null ? void 0 : style.fontColor) parts.push(`color: ${style.fontColor}`);
   if (style == null ? void 0 : style.backgroundColor) parts.push(`background-color: ${style.backgroundColor}`);
-  if (style == null ? void 0 : style.fontSize) parts.push(`font-size: ${style.fontSize}`);
+  if ((style == null ? void 0 : style.fontSize) && isValidFontSize(style.fontSize)) parts.push(`font-size: ${style.fontSize.trim()}`);
   const spec = {
     class: `cc-annotation-editor ${cls}`
   };
@@ -610,6 +626,7 @@ function addContentMarks(builder, docStart, docEnd, text, mark) {
 function buildDecorations(view, plugin) {
   var _a, _b, _c, _d, _e;
   const builder = new import_state.RangeSetBuilder();
+  const annotationRanges = [];
   const { selection } = view.state;
   const inLP = isLivePreview(view);
   for (const { from, to } of view.visibleRanges) {
@@ -624,6 +641,7 @@ function buildDecorations(view, plugin) {
       if (isInCodeRange2(relStart, relEnd, codeRanges)) continue;
       const start = from + relStart;
       const end = from + relEnd;
+      annotationRanges.push([start, end]);
       const parent = (_c = match[1]) != null ? _c : "";
       const child = (_d = match[2]) != null ? _d : "";
       const content = (_e = match[3]) != null ? _e : "";
@@ -655,7 +673,7 @@ function buildDecorations(view, plugin) {
       }
     }
   }
-  return builder.finish();
+  return { decorations: builder.finish(), annotationRanges };
 }
 function createCitationViewPlugin(plugin) {
   return import_view.ViewPlugin.fromClass(
@@ -702,15 +720,26 @@ function createCommentViewPlugin(plugin) {
       constructor(view) {
         this.cmView = view;
         this.lastStyleVersion = plugin.styleVersion;
-        this.decorations = buildDecorations(view, plugin);
+        const built = buildDecorations(view, plugin);
+        this.decorations = built.decorations;
+        this.annotationRanges = built.annotationRanges;
         plugin.editorViews.add(view);
       }
       update(update) {
         const styleChanged = plugin.styleVersion !== this.lastStyleVersion;
-        if (update.docChanged || update.selectionSet || update.viewportChanged || styleChanged) {
+        const needsRebuild = update.docChanged || update.viewportChanged || styleChanged || update.selectionSet && this.selectionTouchesAnnotation(update);
+        if (needsRebuild) {
           this.lastStyleVersion = plugin.styleVersion;
-          this.decorations = buildDecorations(update.view, plugin);
+          const built = buildDecorations(update.view, plugin);
+          this.decorations = built.decorations;
+          this.annotationRanges = built.annotationRanges;
         }
+      }
+      // Selection-only updates matter only when the cursor enters or leaves an
+      // annotation (the cursorInside reveal logic); skip the rebuild otherwise.
+      selectionTouchesAnnotation(update) {
+        const touches = (ranges) => ranges.some((r) => this.annotationRanges.some(([a, b]) => r.from < b && r.to > a));
+        return touches(update.startState.selection.ranges) || touches(update.state.selection.ranges);
       }
       destroy() {
         plugin.editorViews.delete(this.cmView);
@@ -1070,6 +1099,7 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
           new import_obsidian3.Notice(`No .bib files found in "${bibFolder}". Check the folder path in settings.`);
           return;
         }
+        const insertPos = editor.getCursor();
         let specificBibFile = null;
         const annotationId = getAnnotationIdentifierAtCursor(editor);
         if (annotationId) {
@@ -1080,10 +1110,10 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
           specificBibFile = (style == null ? void 0 : style.bibFile) || null;
         }
         new BibFileSuggestModal(this.app, bibFiles, specificBibFile, async (selectedFile) => {
-          const content = await this.app.vault.read(selectedFile);
+          const content = await this.app.vault.cachedRead(selectedFile);
           const entries = parseBibFile(content).sort((a, b) => a.key.localeCompare(b.key));
           new CitationSuggestModal(this.app, entries, (key) => {
-            editor.replaceRange(`{=/{${key}/=}`, editor.getCursor());
+            editor.replaceRange(`{=/{${key}/=}`, insertPos);
           }).open();
         }).open();
       }
@@ -1210,7 +1240,8 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
         this.register(() => btn.remove());
         return;
       }
-    } catch (_) {
+    } catch (e) {
+      console.warn("Annotation Manager: rightRibbon button injection failed", e);
     }
     try {
       const ribbonEl = document.querySelector(".workspace-ribbon.mod-right");
@@ -1224,7 +1255,8 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
         this.register(() => btn.remove());
         return;
       }
-    } catch (_) {
+    } catch (e) {
+      console.warn("Annotation Manager: right ribbon DOM button injection failed", e);
     }
     try {
       const rightSplit = this.app.workspace.rightSplit;
@@ -1238,7 +1270,8 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
         btn.addEventListener("click", () => this.toggleSidebar());
         this.register(() => btn.remove());
       }
-    } catch (_) {
+    } catch (e) {
+      console.warn("Annotation Manager: right split button injection failed", e);
     }
   }
   updateStyleSheet() {
@@ -1263,7 +1296,7 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
       const decls = [];
       if (style.fontColor) decls.push(`color: ${style.fontColor} !important`);
       if (style.backgroundColor) decls.push(`background-color: ${style.backgroundColor} !important`);
-      if (style.fontSize) decls.push(`font-size: ${style.fontSize}`);
+      if (isValidFontSize(style.fontSize)) decls.push(`font-size: ${style.fontSize.trim()}`);
       if (decls.length === 0) continue;
       rules.push(`.${cls} { ${decls.join("; ")} }`);
       rules.push(`.cm-editor .cm-content .cm-line .${cls} { ${decls.join("; ")} }`);
@@ -1301,16 +1334,15 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
     return [...ids].sort();
   }
   processReadingView(el) {
-    var _a, _b;
-    if (!this.syntaxHidingEnabled) return;
-    if (!el.innerHTML.includes("{=")) return;
+    var _a, _b, _c;
+    if (!((_a = el.textContent) == null ? void 0 : _a.includes("{="))) return;
     const annotationPattern = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}([\s\S]*?)=\}/g;
     const citationPattern = /\{=\/\{([^/}]+)\/=\}/g;
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
     const toReplace = [];
     let node;
     while (node = walker.nextNode()) {
-      if ((_a = node.nodeValue) == null ? void 0 : _a.includes("{=")) {
+      if ((_b = node.nodeValue) == null ? void 0 : _b.includes("{=")) {
         toReplace.push(node);
       }
     }
@@ -1318,15 +1350,18 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
       const parent = textNode.parentNode;
       if (!parent) continue;
       if (parent.tagName === "CODE" || parent.tagName === "PRE") continue;
-      const span = document.createElement("span");
-      let html = ((_b = textNode.nodeValue) != null ? _b : "").replace(
-        annotationPattern,
-        (_match, p, c, content) => {
-          const cls = this.textFormattingEnabled ? resolvedClass(p, c != null ? c : "", this.settings.identifierStyles) : null;
-          const className = cls ? `cc-annotation ${cls}` : "cc-annotation";
-          return `<span class="${className}">${content.trim()}</span>`;
-        }
-      );
+      const escaped = escapeHtml((_c = textNode.nodeValue) != null ? _c : "");
+      let html = escaped;
+      if (this.syntaxHidingEnabled) {
+        html = html.replace(
+          annotationPattern,
+          (_match, p, c, content) => {
+            const cls = this.textFormattingEnabled ? resolvedClass(p, c != null ? c : "", this.settings.identifierStyles) : null;
+            const className = cls ? `cc-annotation ${cls}` : "cc-annotation";
+            return `<span class="${className}">${content.trim()}</span>`;
+          }
+        );
+      }
       if (!this.citationVisibilityEnabled) {
         html = html.replace(citationPattern, () => `<span class="cc-hide"></span>`);
       } else if (this.settings.citationColor) {
@@ -1335,6 +1370,8 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
           (match) => `<span class="cc-citation">${match}</span>`
         );
       }
+      if (html === escaped) continue;
+      const span = document.createElement("span");
       span.innerHTML = html;
       parent.replaceChild(span, textNode);
     }
@@ -1345,8 +1382,12 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
     this._refreshSidebar();
   }
   async indexFile(file) {
-    const content = await this.app.vault.read(file);
-    this.fileAnnotations.set(file.path, parseAnnotations(content));
+    try {
+      const content = await this.app.vault.cachedRead(file);
+      this.fileAnnotations.set(file.path, parseAnnotations(content));
+    } catch (e) {
+      console.warn(`Annotation Manager: failed to index ${file.path}`, e);
+    }
   }
   // ── Config file integration ──────────────────────────────────────────────
   async createConfigFile() {
@@ -1374,7 +1415,12 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
       return;
     }
     const content = await this.app.vault.read(file);
-    this.settings.identifierStyles = parseConfigTable(content);
+    const parsed = parseConfigTable(content);
+    if (Object.keys(parsed).length === 0 && Object.keys(this.settings.identifierStyles).length > 0) {
+      new import_obsidian3.Notice(`No identifiers found in ${path} \u2014 keeping existing styles. Check the table format.`);
+      return;
+    }
+    this.settings.identifierStyles = parsed;
     await this.saveSettings();
     this.bumpStyleVersion();
     const updated = injectExamples(content, this.settings.identifierStyles);
@@ -1395,7 +1441,8 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
       try {
         (_b = (_a = this.app.vault).setConfig) == null ? void 0 : _b.call(_a, "showUnsupportedFiles", true);
         (_d = (_c = this.app).saveLocalStorage) == null ? void 0 : _d.call(_c);
-      } catch (_) {
+      } catch (e) {
+        console.warn('Annotation Manager: enabling "Show all file types" failed', e);
       }
     }
     this.updateStyleSheet();
@@ -1411,7 +1458,7 @@ var AnnotationManagerPlugin = class extends import_obsidian3.Plugin {
     }).sort((a, b) => a.name.localeCompare(b.name));
     for (const file of bibFiles) {
       try {
-        const content = await this.app.vault.read(file);
+        const content = await this.app.vault.cachedRead(file);
         const entries = parseBibFile(content).sort((a, b) => a.key.localeCompare(b.key));
         result.set(file.name, entries);
       } catch (e) {
@@ -1480,6 +1527,9 @@ var BibFileView = class extends import_obsidian3.FileView {
     this.contentEl.empty();
   }
 };
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 function getAnnotationIdentifierAtCursor(editor) {
   var _a;
   const cursor = editor.getCursor();

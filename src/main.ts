@@ -5,6 +5,7 @@ import {
 	DEFAULT_SETTINGS,
 	identifierKeyToClass,
 	injectExamples,
+	isValidFontSize,
 	parseConfigTable,
 	renderConfigTable,
 	resolvedClass,
@@ -163,6 +164,10 @@ export default class AnnotationManagerPlugin extends Plugin {
 					return;
 				}
 
+				// Capture the insert position now — the cursor may move (or the user may
+				// switch files) while the two modals below are open.
+				const insertPos = editor.getCursor();
+
 				// Determine annotation-specific .bib from cursor position
 				let specificBibFile: string | null = null;
 				const annotationId = getAnnotationIdentifierAtCursor(editor);
@@ -175,10 +180,10 @@ export default class AnnotationManagerPlugin extends Plugin {
 				}
 
 				new BibFileSuggestModal(this.app, bibFiles, specificBibFile, async (selectedFile) => {
-					const content = await this.app.vault.read(selectedFile);
+					const content = await this.app.vault.cachedRead(selectedFile);
 					const entries = parseBibFile(content).sort((a, b) => a.key.localeCompare(b.key));
 					new CitationSuggestModal(this.app, entries, (key) => {
-						editor.replaceRange(`{=/{${key}/=}`, editor.getCursor());
+						editor.replaceRange(`{=/{${key}/=}`, insertPos);
 					}).open();
 				}).open();
 			},
@@ -326,7 +331,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 				this.register(() => btn.remove());
 				return;
 			}
-		} catch (_) {}
+		} catch (e) { console.warn('Annotation Manager: rightRibbon button injection failed', e); }
 
 		// Approach 2: querySelector for the right ribbon DOM element
 		try {
@@ -341,7 +346,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 				this.register(() => btn.remove());
 				return;
 			}
-		} catch (_) {}
+		} catch (e) { console.warn('Annotation Manager: right ribbon DOM button injection failed', e); }
 
 		// Approach 3: append to the right split container
 		try {
@@ -356,7 +361,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 				btn.addEventListener('click', () => this.toggleSidebar());
 				this.register(() => btn.remove());
 			}
-		} catch (_) {}
+		} catch (e) { console.warn('Annotation Manager: right split button injection failed', e); }
 	}
 
 	updateStyleSheet() {
@@ -390,7 +395,9 @@ export default class AnnotationManagerPlugin extends Plugin {
 			const decls: string[] = [];
 			if (style.fontColor) decls.push(`color: ${style.fontColor} !important`);
 			if (style.backgroundColor) decls.push(`background-color: ${style.backgroundColor} !important`);
-			if (style.fontSize) decls.push(`font-size: ${style.fontSize}`);
+			// Validate: fontSize is free text and goes into the global stylesheet —
+			// an unvalidated value could inject arbitrary CSS rules.
+			if (isValidFontSize(style.fontSize)) decls.push(`font-size: ${style.fontSize.trim()}`);
 			if (decls.length === 0) continue;
 
 			// Reading View
@@ -441,8 +448,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 	}
 
 	private processReadingView(el: HTMLElement) {
-		if (!this.syntaxHidingEnabled) return;
-		if (!el.innerHTML.includes('{=')) return;
+		if (!el.textContent?.includes('{=')) return;
 
 		const annotationPattern = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}([\s\S]*?)=\}/g;
 		const citationPattern = /\{=\/\{([^/}]+)\/=\}/g;
@@ -461,17 +467,23 @@ export default class AnnotationManagerPlugin extends Plugin {
 			if (!parent) continue;
 			if (parent.tagName === 'CODE' || parent.tagName === 'PRE') continue;
 
-			const span = document.createElement('span');
-			let html = (textNode.nodeValue ?? '').replace(
-				annotationPattern,
-				(_match, p: string, c: string | undefined, content: string) => {
-					const cls = this.textFormattingEnabled
-						? resolvedClass(p, c ?? '', this.settings.identifierStyles)
-						: null;
-					const className = cls ? `cc-annotation ${cls}` : 'cc-annotation';
-					return `<span class="${className}">${content.trim()}</span>`;
-				},
-			);
+			// Escape first: nodeValue is plain text, and assigning the rewritten
+			// string through innerHTML below would otherwise re-parse any markup
+			// it contains (XSS via note content).
+			const escaped = escapeHtml(textNode.nodeValue ?? '');
+			let html = escaped;
+			if (this.syntaxHidingEnabled) {
+				html = html.replace(
+					annotationPattern,
+					(_match, p: string, c: string | undefined, content: string) => {
+						const cls = this.textFormattingEnabled
+							? resolvedClass(p, c ?? '', this.settings.identifierStyles)
+							: null;
+						const className = cls ? `cc-annotation ${cls}` : 'cc-annotation';
+						return `<span class="${className}">${content.trim()}</span>`;
+					},
+				);
+			}
 			if (!this.citationVisibilityEnabled) {
 				html = html.replace(citationPattern, () => `<span class="cc-hide"></span>`);
 			} else if (this.settings.citationColor) {
@@ -479,6 +491,9 @@ export default class AnnotationManagerPlugin extends Plugin {
 					`<span class="cc-citation">${match}</span>`
 				);
 			}
+			if (html === escaped) continue;
+
+			const span = document.createElement('span');
 			span.innerHTML = html;
 			parent.replaceChild(span, textNode);
 		}
@@ -491,8 +506,13 @@ export default class AnnotationManagerPlugin extends Plugin {
 	}
 
 	private async indexFile(file: TFile) {
-		const content = await this.app.vault.read(file);
-		this.fileAnnotations.set(file.path, parseAnnotations(content));
+		try {
+			const content = await this.app.vault.cachedRead(file);
+			this.fileAnnotations.set(file.path, parseAnnotations(content));
+		} catch (e) {
+			// One unreadable file must not abort indexAllFiles' Promise.all
+			console.warn(`Annotation Manager: failed to index ${file.path}`, e);
+		}
 	}
 
 	// ── Config file integration ──────────────────────────────────────────────
@@ -523,7 +543,16 @@ export default class AnnotationManagerPlugin extends Plugin {
 			return;
 		}
 		const content = await this.app.vault.read(file);
-		this.settings.identifierStyles = parseConfigTable(content);
+		const parsed = parseConfigTable(content);
+
+		// Guard against wiping all styles when the config table is missing or
+		// malformed (parseConfigTable returns {} in that case).
+		if (Object.keys(parsed).length === 0 && Object.keys(this.settings.identifierStyles).length > 0) {
+			new Notice(`No identifiers found in ${path} — keeping existing styles. Check the table format.`);
+			return;
+		}
+
+		this.settings.identifierStyles = parsed;
 		await this.saveSettings();
 		this.bumpStyleVersion();
 
@@ -550,7 +579,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 				// This modifies a global Obsidian setting — noted in the README.
 				(this.app.vault as any).setConfig?.('showUnsupportedFiles', true);
 				(this.app as any).saveLocalStorage?.();
-			} catch (_) {}
+			} catch (e) { console.warn('Annotation Manager: enabling "Show all file types" failed', e); }
 		}
 		// CSS hiding for showBibFilesInBrowser=false is handled in updateStyleSheet
 		this.updateStyleSheet();
@@ -568,7 +597,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 		for (const file of bibFiles) {
 			try {
-				const content = await this.app.vault.read(file);
+				const content = await this.app.vault.cachedRead(file);
 				const entries = parseBibFile(content).sort((a, b) => a.key.localeCompare(b.key));
 				result.set(file.name, entries);
 			} catch (e) {
@@ -644,6 +673,14 @@ class BibFileView extends FileView {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
+
+function escapeHtml(s: string): string {
+	return s
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;');
+}
 
 function getAnnotationIdentifierAtCursor(editor: Editor): string | null {
 	const cursor = editor.getCursor();
