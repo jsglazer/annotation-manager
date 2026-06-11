@@ -341,7 +341,6 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		new Setting(containerEl).setName('Annotation Manager').setHeading();
 
 		const infoPanel = containerEl.createDiv({ cls: 'cc-info-panel' });
 		const p1 = infoPanel.createEl('p');

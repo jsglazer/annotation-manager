@@ -15,6 +15,13 @@
    (decoration.ts). These static rules provide the neutral baseline and let
    nested CM6 syntax tokens inherit the annotation color.
 
+   NOTE: the `!important` here is intentional and required — Obsidian's own
+   editor token rules (link/bracket coloring) are themselves `!important`, so
+   they can only be overridden by an equal-importance rule that wins on source
+   order (plugin CSS loads after core). Increasing specificity alone cannot beat
+   a host `!important` rule, so the obsidianmd/no-important warnings on these
+   lines are knowingly accepted.
+
    Neutral baseline: prevents CM6 link/bracket coloring on annotation spans.
    Inline `color: … !important` on a styled span overrides the parent rule;
    the child rules below override the universal child rule by specificity. */
@@ -39,9 +46,11 @@
 	color: var(--cc-fg) !important;
 }
 
-/* Hide .bib files in the file explorer when the setting is off */
-body.cc-hide-bib-files .nav-file:has(.nav-file-title[data-path$=".bib"]) {
-	display: none !important;
+/* Hide .bib files in the file explorer when the setting is off. Targets the
+   title element directly (no :has) — its .nav-file wrapper has no intrinsic
+   size of its own, so the row collapses. */
+body.cc-hide-bib-files .nav-file-title[data-path$=".bib"] {
+	display: none;
 }
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */

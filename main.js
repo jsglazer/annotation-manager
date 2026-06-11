@@ -275,7 +275,6 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    new import_obsidian.Setting(containerEl).setName("Annotation Manager").setHeading();
     const infoPanel = containerEl.createDiv({ cls: "cc-info-panel" });
     const p1 = infoPanel.createEl("p");
     p1.appendText("If you encounter errors or have questions, please submit an Issue on the ");
