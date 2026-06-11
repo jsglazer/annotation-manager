@@ -17,7 +17,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # Node 24 ships npm 11, matching the npm that generates the lockfile —
+          # avoids npm-major resolution drift that breaks `npm ci`.
+          node-version: 24
           cache: npm
 
       - run: npm ci
