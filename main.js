@@ -481,11 +481,12 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
   }
   renderColorSetting(wrap, name, desc, getValue, onChange) {
     const setting = new import_obsidian.Setting(wrap).setName(name).setDesc(desc);
-    const picker = activeDocument.createEl("input", {
+    setting.controlEl.addClass("cc-color-control");
+    const picker = setting.controlEl.createEl("input", {
       cls: "cc-color-picker",
       attr: { type: "color" }
     });
-    const hexInput = activeDocument.createEl("input", {
+    const hexInput = setting.controlEl.createEl("input", {
       cls: "cc-color-hex",
       attr: { type: "text", maxlength: "7", placeholder: "#rrggbb" }
     });
@@ -511,9 +512,6 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
         void onChange("");
       }
     });
-    setting.controlEl.addClass("cc-color-control");
-    setting.controlEl.appendChild(picker);
-    setting.controlEl.appendChild(hexInput);
   }
 };
 var VaultFileSuggestModal = class extends import_obsidian.FuzzySuggestModal {

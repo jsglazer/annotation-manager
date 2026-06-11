@@ -631,13 +631,16 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		onChange: (v: string) => Promise<void>,
 	): void {
 		const setting = new Setting(wrap).setName(name).setDesc(desc);
+		setting.controlEl.addClass('cc-color-control');
 
-		const picker = activeDocument.createEl('input', {
+		// createEl appends to controlEl — it must be the parent, not the document
+		// (Node.createEl on a Document throws HierarchyRequestError).
+		const picker = setting.controlEl.createEl('input', {
 			cls: 'cc-color-picker',
 			attr: { type: 'color' },
 		});
 
-		const hexInput = activeDocument.createEl('input', {
+		const hexInput = setting.controlEl.createEl('input', {
 			cls: 'cc-color-hex',
 			attr: { type: 'text', maxlength: '7', placeholder: '#rrggbb' },
 		});
@@ -669,9 +672,6 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			}
 		});
 
-		setting.controlEl.addClass('cc-color-control');
-		setting.controlEl.appendChild(picker);
-		setting.controlEl.appendChild(hexInput);
 	}
 }
 
