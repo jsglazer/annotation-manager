@@ -313,7 +313,7 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
         this.plugin.applyBibFileVisibility();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Config Source").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Config source").setHeading();
     new import_obsidian.Setting(containerEl).setName("Identifier style source").setDesc("Define styles in this UI, or read them from a Markdown table in your vault").addDropdown(
       (dd) => dd.addOption("settings", "Settings UI").addOption("file", "Config file").setValue(this.plugin.settings.configSource).onChange(async (v) => {
         this.plugin.settings.configSource = v;
@@ -350,12 +350,14 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
       })
     );
     new import_obsidian.Setting(containerEl).setName("Config file actions").addButton(
-      (btn) => btn.setButtonText("Create / update config file").setCta().onClick(() => {
-        void this.plugin.createConfigFile().then(() => this.display());
+      (btn) => btn.setButtonText("Create / update config file").setCta().onClick(async () => {
+        await this.plugin.createConfigFile();
+        this.display();
       })
     ).addButton(
-      (btn) => btn.setButtonText("Reload from file").onClick(() => {
-        void this.plugin.reloadConfigFile().then(() => this.display());
+      (btn) => btn.setButtonText("Reload from file").onClick(async () => {
+        await this.plugin.reloadConfigFile();
+        this.display();
       })
     );
     containerEl.createEl("p", {
@@ -387,14 +389,14 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     }
   }
   renderSettingsSourceUI(containerEl) {
-    new import_obsidian.Setting(containerEl).setName("Identifier Styles").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Identifier styles").setHeading();
     containerEl.createEl("p", {
       text: 'Add an identifier (e.g. "math/hot") or a wildcard (e.g. "math/*"). Specific identifiers take precedence over wildcards.'
     });
     for (const id of Object.keys(this.plugin.settings.identifierStyles)) {
       this.renderIdentifierBlock(containerEl, id);
     }
-    new import_obsidian.Setting(containerEl).setName("Add Identifier").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Add identifier").setHeading();
     new import_obsidian.Setting(containerEl).setName("Identifier").setDesc("Format: parent/child  or  parent/* to match all children of a parent").addText(
       (text) => text.setPlaceholder("math/hot").onChange((v) => {
         this.pendingIdentifier = v.trim();
@@ -799,11 +801,11 @@ var AnnotationSidebarView = class extends import_obsidian2.ItemView {
     }
     const controls = root.createDiv("cc-sidebar-controls");
     const expandAllBtn = controls.createEl("button", {
-      text: "Expand All",
+      text: "Expand all",
       cls: "cc-sidebar-ctrl-btn"
     });
     const collapseAllBtn = controls.createEl("button", {
-      text: "Collapse All",
+      text: "Collapse all",
       cls: "cc-sidebar-ctrl-btn"
     });
     const sectionMeta = [];
@@ -1099,13 +1101,9 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
           new import_obsidian3.Notice("Annotation Manager: set the Bib files folder path in settings before inserting citations.");
           return;
         }
-        const bibFolder = this.settings.bibFolderPath.replace(/\/$/, "");
-        const bibFiles = this.app.vault.getFiles().filter((f) => {
-          var _a;
-          return f.extension === "bib" && ((_a = f.parent) == null ? void 0 : _a.path) === bibFolder;
-        }).sort((a, b) => a.name.localeCompare(b.name));
+        const bibFiles = this.bibFilesInFolder();
         if (bibFiles.length === 0) {
-          new import_obsidian3.Notice(`No .bib files found in "${bibFolder}". Check the folder path in settings.`);
+          new import_obsidian3.Notice(`No .bib files found in "${this.settings.bibFolderPath}". Check the folder path in settings.`);
           return;
         }
         const insertPos = editor.getCursor();
@@ -1137,7 +1135,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
         if (ids.length === 0) return;
         menu.addSeparator();
         menu.addItem((item) => {
-          item.setTitle("Annot Format");
+          item.setTitle("Annot format");
           item.setIcon("tag");
           const submenu = item.setSubmenu();
           for (const id of ids) {
@@ -1427,11 +1425,11 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
   // ── Config file integration ──────────────────────────────────────────────
   async createConfigFile() {
     const content = renderConfigTable(this.settings.identifierStyles);
-    const path = this.settings.configFilePath || "OccConfig.md";
+    const path = (0, import_obsidian3.normalizePath)(this.settings.configFilePath || "OccConfig.md");
     try {
       const existing = this.app.vault.getAbstractFileByPath(path);
       if (existing instanceof import_obsidian3.TFile) {
-        await this.app.vault.modify(existing, content);
+        await this.app.vault.process(existing, () => content);
       } else {
         await this.app.vault.create(path, content);
       }
@@ -1443,7 +1441,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     }
   }
   async reloadConfigFile() {
-    const path = this.settings.configFilePath;
+    const path = (0, import_obsidian3.normalizePath)(this.settings.configFilePath);
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!(file instanceof import_obsidian3.TFile)) {
       new import_obsidian3.Notice(`Config file not found: ${path}`);
@@ -1462,7 +1460,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     if (updated !== content) {
       this._writingConfigFile = true;
       try {
-        await this.app.vault.modify(file, updated);
+        await this.app.vault.process(file, () => updated);
       } finally {
         this._writingConfigFile = false;
       }
@@ -1483,14 +1481,17 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     this.updateStyleSheet();
     this.app.workspace.updateOptions();
   }
+  // Resolves the configured bib folder and returns its .bib files, sorted by
+  // name. Uses getFolderByPath rather than scanning the whole vault.
+  bibFilesInFolder() {
+    if (!this.settings.bibFolderPath) return [];
+    const folder = this.app.vault.getFolderByPath((0, import_obsidian3.normalizePath)(this.settings.bibFolderPath));
+    if (!folder) return [];
+    return folder.children.filter((f) => f instanceof import_obsidian3.TFile && f.extension === "bib").sort((a, b) => a.name.localeCompare(b.name));
+  }
   async getBibEntries() {
     const result = /* @__PURE__ */ new Map();
-    const folder = this.settings.bibFolderPath.replace(/\/$/, "");
-    if (!folder) return result;
-    const bibFiles = this.app.vault.getFiles().filter((f) => {
-      var _a;
-      return f.extension === "bib" && ((_a = f.parent) == null ? void 0 : _a.path) === folder;
-    }).sort((a, b) => a.name.localeCompare(b.name));
+    const bibFiles = this.bibFilesInFolder();
     for (const file of bibFiles) {
       try {
         const content = await this.app.vault.cachedRead(file);

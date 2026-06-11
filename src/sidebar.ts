@@ -52,11 +52,11 @@ export class AnnotationSidebarView extends ItemView {
 		const controls = root.createDiv('cc-sidebar-controls');
 
 		const expandAllBtn = controls.createEl('button', {
-			text: 'Expand All',
+			text: 'Expand all',
 			cls: 'cc-sidebar-ctrl-btn',
 		});
 		const collapseAllBtn = controls.createEl('button', {
-			text: 'Collapse All',
+			text: 'Collapse all',
 			cls: 'cc-sidebar-ctrl-btn',
 		});
 

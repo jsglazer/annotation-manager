@@ -396,7 +396,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			);
 
 		// ── Config Source ──────────────────────────────────────────────────────
-		new Setting(containerEl).setName('Config Source').setHeading();
+		new Setting(containerEl).setName('Config source').setHeading();
 
 		new Setting(containerEl)
 			.setName('Identifier style source')
@@ -455,14 +455,16 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			.addButton(btn => btn
 				.setButtonText('Create / update config file')
 				.setCta()
-				.onClick(() => {
-					void this.plugin.createConfigFile().then(() => this.display());
+				.onClick(async () => {
+					await this.plugin.createConfigFile();
+					this.display();
 				})
 			)
 			.addButton(btn => btn
 				.setButtonText('Reload from file')
-				.onClick(() => {
-					void this.plugin.reloadConfigFile().then(() => this.display());
+				.onClick(async () => {
+					await this.plugin.reloadConfigFile();
+					this.display();
 				})
 			);
 
@@ -499,7 +501,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 	}
 
 	private renderSettingsSourceUI(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName('Identifier Styles').setHeading();
+		new Setting(containerEl).setName('Identifier styles').setHeading();
 		containerEl.createEl('p', {
 			text: 'Add an identifier (e.g. "math/hot") or a wildcard (e.g. "math/*"). '
 				+ 'Specific identifiers take precedence over wildcards.',
@@ -509,7 +511,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			this.renderIdentifierBlock(containerEl, id);
 		}
 
-		new Setting(containerEl).setName('Add Identifier').setHeading();
+		new Setting(containerEl).setName('Add identifier').setHeading();
 		new Setting(containerEl)
 			.setName('Identifier')
 			.setDesc('Format: parent/child  or  parent/* to match all children of a parent')

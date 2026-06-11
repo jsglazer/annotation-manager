@@ -1,4 +1,4 @@
-import { App, debounce, Editor, EventRef, FileView, MarkdownView, Menu, MenuItem, Notice, Plugin, setIcon, SuggestModal, TFile, WorkspaceLeaf } from 'obsidian';
+import { App, debounce, Editor, EventRef, FileView, MarkdownView, Menu, MenuItem, normalizePath, Notice, Plugin, setIcon, SuggestModal, TFile, WorkspaceLeaf } from 'obsidian';
 import {
 	AnnotationManagerSettings,
 	AnnotationManagerSettingTab,
@@ -195,13 +195,10 @@ export default class AnnotationManagerPlugin extends Plugin {
 					return;
 				}
 
-				const bibFolder = this.settings.bibFolderPath.replace(/\/$/, '');
-				const bibFiles = this.app.vault.getFiles()
-					.filter(f => f.extension === 'bib' && f.parent?.path === bibFolder)
-					.sort((a, b) => a.name.localeCompare(b.name));
+				const bibFiles = this.bibFilesInFolder();
 
 				if (bibFiles.length === 0) {
-					new Notice(`No .bib files found in "${bibFolder}". Check the folder path in settings.`);
+					new Notice(`No .bib files found in "${this.settings.bibFolderPath}". Check the folder path in settings.`);
 					return;
 				}
 
@@ -242,7 +239,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 				menu.addSeparator();
 				menu.addItem(item => {
-					item.setTitle('Annot Format');
+					item.setTitle('Annot format');
 					item.setIcon('tag');
 					const submenu = (item as MenuItemWithSubmenu).setSubmenu();
 					for (const id of ids) {
@@ -573,11 +570,11 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 	async createConfigFile(): Promise<void> {
 		const content = renderConfigTable(this.settings.identifierStyles);
-		const path = this.settings.configFilePath || 'OccConfig.md';
+		const path = normalizePath(this.settings.configFilePath || 'OccConfig.md');
 		try {
 			const existing = this.app.vault.getAbstractFileByPath(path);
 			if (existing instanceof TFile) {
-				await this.app.vault.modify(existing, content);
+				await this.app.vault.process(existing, () => content);
 			} else {
 				await this.app.vault.create(path, content);
 			}
@@ -590,7 +587,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 	}
 
 	async reloadConfigFile(): Promise<void> {
-		const path = this.settings.configFilePath;
+		const path = normalizePath(this.settings.configFilePath);
 		const file = this.app.vault.getAbstractFileByPath(path);
 		if (!(file instanceof TFile)) {
 			new Notice(`Config file not found: ${path}`);
@@ -615,7 +612,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 		if (updated !== content) {
 			this._writingConfigFile = true;
 			try {
-				await this.app.vault.modify(file, updated);
+				await this.app.vault.process(file, () => updated);
 			} finally {
 				this._writingConfigFile = false;
 			}
@@ -640,14 +637,20 @@ export default class AnnotationManagerPlugin extends Plugin {
 		this.app.workspace.updateOptions();
 	}
 
+	// Resolves the configured bib folder and returns its .bib files, sorted by
+	// name. Uses getFolderByPath rather than scanning the whole vault.
+	bibFilesInFolder(): TFile[] {
+		if (!this.settings.bibFolderPath) return [];
+		const folder = this.app.vault.getFolderByPath(normalizePath(this.settings.bibFolderPath));
+		if (!folder) return [];
+		return folder.children
+			.filter((f): f is TFile => f instanceof TFile && f.extension === 'bib')
+			.sort((a, b) => a.name.localeCompare(b.name));
+	}
+
 	async getBibEntries(): Promise<Map<string, BibEntry[]>> {
 		const result = new Map<string, BibEntry[]>();
-		const folder = this.settings.bibFolderPath.replace(/\/$/, '');
-		if (!folder) return result;
-
-		const bibFiles = this.app.vault.getFiles()
-			.filter(f => f.extension === 'bib' && f.parent?.path === folder)
-			.sort((a, b) => a.name.localeCompare(b.name));
+		const bibFiles = this.bibFilesInFolder();
 
 		for (const file of bibFiles) {
 			try {
