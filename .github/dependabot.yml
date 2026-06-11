@@ -8,6 +8,10 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: development
+    ignore:
+      # Pinned to the eslint-plugin-obsidianmd peer / the plugin's minAppVersion;
+      # bumping it breaks `npm ci` (peer conflict), so don't auto-PR it.
+      - dependency-name: obsidian
 
   - package-ecosystem: github-actions
     directory: '/'
