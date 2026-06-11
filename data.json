@@ -1,31 +1,31 @@
 {
-  "identifierStyles": {
-    "math/cold": {
-      "fontColor": "#2e8ca3",
-      "backgroundColor": "#fce3e8",
-      "fontSize": ""
-    },
-    "math/hot": {
-      "fontColor": "#c24040",
-      "backgroundColor": "",
-      "fontSize": "12px"
-    },
-    "stats": {
-      "fontColor": "#f5b761",
-      "backgroundColor": "",
-      "fontSize": ""
-    },
-    "stats/ttest": {
-      "fontColor": "#e31212",
-      "backgroundColor": "#fbfce3",
-      "fontSize": ""
-    },
-    "stats/chi": {
-      "fontColor": "#b3f2c4",
-      "backgroundColor": "#a5d7f2",
-      "fontSize": ""
-    }
-  },
-  "configSource": "file",
-  "configFilePath": "AMConfig.md"
+	"identifierStyles": {
+		"math/cold": {
+			"fontColor": "#2e8ca3",
+			"backgroundColor": "#fce3e8",
+			"fontSize": ""
+		},
+		"math/hot": {
+			"fontColor": "#c24040",
+			"backgroundColor": "",
+			"fontSize": "12px"
+		},
+		"stats": {
+			"fontColor": "#f5b761",
+			"backgroundColor": "",
+			"fontSize": ""
+		},
+		"stats/ttest": {
+			"fontColor": "#e31212",
+			"backgroundColor": "#fbfce3",
+			"fontSize": ""
+		},
+		"stats/chi": {
+			"fontColor": "#b3f2c4",
+			"backgroundColor": "#a5d7f2",
+			"fontSize": ""
+		}
+	},
+	"configSource": "file",
+	"configFilePath": "AMConfig.md"
 }

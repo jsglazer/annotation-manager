@@ -1,23 +1,38 @@
 {
 	"name": "annotation-manager",
-	"version": "1.1.11",
+	"version": "1.1.12",
 	"description": "Annotate text inline with {={id}text=} syntax, view all annotations in a sidebar, and query them via Dataview.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
-		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"lint": "eslint src",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage"
 	},
 	"license": "MIT",
 	"devDependencies": {
-		"@types/node": "^16.11.6",
+		"@eslint/js": "^9.39.4",
+		"@eslint/json": "^0.14.0",
+		"@types/node": "^22.0.0",
+		"@vitest/coverage-v8": "^4.1.8",
 		"esbuild": "0.25.5",
+		"eslint": "^9.39.4",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-obsidianmd": "^0.3.0",
+		"prettier": "^3.8.4",
 		"tslib": "2.4.0",
-		"typescript": "^5.8.3"
+		"typescript": "^5.8.3",
+		"typescript-eslint": "^8.61.0",
+		"vitest": "^4.1.8"
 	},
 	"dependencies": {
 		"@codemirror/state": "6.5.0",
 		"@codemirror/view": "6.38.6",
-		"obsidian": "1.12.7"
+		"obsidian": "1.8.7"
 	}
 }

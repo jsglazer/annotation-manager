@@ -12,9 +12,15 @@ export class AnnotationSidebarView extends ItemView {
 		this.plugin = plugin;
 	}
 
-	getViewType(): string { return SIDEBAR_VIEW_TYPE; }
-	getDisplayText(): string { return 'Annotations'; }
-	getIcon(): string { return 'message-square'; }
+	getViewType(): string {
+		return SIDEBAR_VIEW_TYPE;
+	}
+	getDisplayText(): string {
+		return 'Annotations';
+	}
+	getIcon(): string {
+		return 'message-square';
+	}
 
 	async onOpen(): Promise<void> {
 		this.render();
@@ -28,12 +34,15 @@ export class AnnotationSidebarView extends ItemView {
 		const allAnnotations = this.plugin.getAllAnnotations();
 
 		// Group by identifier key (parent/child or parent)
-		const byId = new Map<string, Array<{
-			filePath: string;
-			text: string;
-			from: number;
-			line: number;
-		}>>();
+		const byId = new Map<
+			string,
+			Array<{
+				filePath: string;
+				text: string;
+				from: number;
+				line: number;
+			}>
+		>();
 
 		for (const [filePath, anns] of allAnnotations) {
 			for (const ann of anns) {
@@ -112,9 +121,7 @@ export class AnnotationSidebarView extends ItemView {
 				const fileName = entry.filePath.split('/').pop()?.replace(/\.md$/, '') ?? entry.filePath;
 
 				item.createEl('span', {
-					text: entry.text.length > 60
-						? entry.text.slice(0, 60) + '…'
-						: (entry.text || '(empty)'),
+					text: entry.text.length > 60 ? entry.text.slice(0, 60) + '…' : entry.text || '(empty)',
 					cls: 'cc-sidebar-text',
 				});
 				item.createEl('span', {

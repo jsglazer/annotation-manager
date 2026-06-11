@@ -1,3 +1,5 @@
+import { isUnsafeKey } from './util';
+
 export interface BibEntry {
 	key: string;
 	type: string;
@@ -43,7 +45,10 @@ function parseFields(body: string): Record<string, string> {
 		while (i < len && body[i] !== '=' && body[i] !== ',' && body[i] !== '}') i++;
 		const name = body.slice(nameStart, i).trim().toLowerCase();
 
-		if (!name || body[i] !== '=') { i++; continue; }
+		if (!name || body[i] !== '=') {
+			i++;
+			continue;
+		}
 		i++; // skip '='
 
 		// Skip whitespace
@@ -52,7 +57,10 @@ function parseFields(body: string): Record<string, string> {
 		let value = '';
 		if (i < len && body[i] === '{') {
 			const result = extractBracedValue(body, i);
-			if (result) { value = result.value; i = result.end; }
+			if (result) {
+				value = result.value;
+				i = result.end;
+			}
 		} else if (i < len && body[i] === '"') {
 			i++;
 			const start = i;
@@ -62,11 +70,12 @@ function parseFields(body: string): Record<string, string> {
 		} else {
 			// Unquoted value (numbers, string constants)
 			const start = i;
-			while (i < len && body[i] !== ',' && body[i] !== '\n' && body[i] !== '\r' && body[i] !== '}') i++;
+			while (i < len && body[i] !== ',' && body[i] !== '\n' && body[i] !== '\r' && body[i] !== '}')
+				i++;
 			value = body.slice(start, i).trim();
 		}
 
-		if (name) fields[name] = value;
+		if (name && !isUnsafeKey(name)) fields[name] = value;
 	}
 
 	return fields;

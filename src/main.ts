@@ -1,4 +1,20 @@
-import { App, debounce, Editor, EventRef, FileView, MarkdownView, Menu, MenuItem, normalizePath, Notice, Plugin, setIcon, SuggestModal, TFile, WorkspaceLeaf } from 'obsidian';
+import {
+	App,
+	debounce,
+	Editor,
+	EventRef,
+	FileView,
+	MarkdownView,
+	Menu,
+	MenuItem,
+	normalizePath,
+	Notice,
+	Plugin,
+	setIcon,
+	SuggestModal,
+	TFile,
+	WorkspaceLeaf,
+} from 'obsidian';
 import {
 	AnnotationManagerSettings,
 	AnnotationManagerSettingTab,
@@ -64,10 +80,10 @@ export default class AnnotationManagerPlugin extends Plugin {
 	settings: AnnotationManagerSettings;
 	styleVersion = 0;
 	// Four independent display toggles (all ON by default)
-	syntaxHidingEnabled = true;         // hides {={id} and =} delimiters in LP / Reading View
+	syntaxHidingEnabled = true; // hides {={id} and =} delimiters in LP / Reading View
 	identifierFormattingEnabled = true; // applies custom color to the bracket+identifier portion
-	textFormattingEnabled = true;       // applies custom color to the annotation text content
-	citationVisibilityEnabled = true;   // shows/hides {=/{key}/=} citation markers
+	textFormattingEnabled = true; // applies custom color to the annotation text content
+	citationVisibilityEnabled = true; // shows/hides {=/{key}/=} citation markers
 
 	lastUsedIdentifier: string | null = null;
 
@@ -75,7 +91,9 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 	private fileAnnotations: Map<string, Annotation[]> = new Map();
 	private debouncedRefresh = debounce(() => this._refreshSidebar(), 150, true);
-	private debouncedReloadConfig = debounce(() => { void this.reloadConfigFile(); }, 8000);
+	private debouncedReloadConfig = debounce(() => {
+		void this.reloadConfigFile();
+	}, 8000);
 	private _writingConfigFile = false;
 
 	async onload() {
@@ -162,7 +180,9 @@ export default class AnnotationManagerPlugin extends Plugin {
 			callback: () => {
 				this.identifierFormattingEnabled = !this.identifierFormattingEnabled;
 				this.bumpStyleVersion();
-				new Notice(`Annotation bracket/identifier formatting ${this.identifierFormattingEnabled ? 'enabled' : 'disabled'}`);
+				new Notice(
+					`Annotation bracket/identifier formatting ${this.identifierFormattingEnabled ? 'enabled' : 'disabled'}`,
+				);
 			},
 		});
 
@@ -172,7 +192,9 @@ export default class AnnotationManagerPlugin extends Plugin {
 			callback: () => {
 				this.textFormattingEnabled = !this.textFormattingEnabled;
 				this.bumpStyleVersion();
-				new Notice(`Annotation text formatting ${this.textFormattingEnabled ? 'enabled' : 'disabled'}`);
+				new Notice(
+					`Annotation text formatting ${this.textFormattingEnabled ? 'enabled' : 'disabled'}`,
+				);
 			},
 		});
 
@@ -191,14 +213,18 @@ export default class AnnotationManagerPlugin extends Plugin {
 			name: 'Insert citation',
 			editorCallback: async (editor: Editor) => {
 				if (!this.settings.bibFolderPath) {
-					new Notice('Annotation Manager: set the Bib files folder path in settings before inserting citations.');
+					new Notice(
+						'Annotation Manager: set the bib files folder path in settings before inserting citations.',
+					);
 					return;
 				}
 
 				const bibFiles = this.bibFilesInFolder();
 
 				if (bibFiles.length === 0) {
-					new Notice(`No .bib files found in "${this.settings.bibFolderPath}". Check the folder path in settings.`);
+					new Notice(
+						`No .bib files found in "${this.settings.bibFolderPath}". Check the folder path in settings.`,
+					);
 					return;
 				}
 
@@ -238,7 +264,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 				if (ids.length === 0) return;
 
 				menu.addSeparator();
-				menu.addItem(item => {
+				menu.addItem((item) => {
 					item.setTitle('Annot format');
 					item.setIcon('tag');
 					const submenu = (item as MenuItemWithSubmenu).setSubmenu();
@@ -282,7 +308,11 @@ export default class AnnotationManagerPlugin extends Plugin {
 					this.injectDataviewMetadata(file);
 					this.debouncedRefresh();
 					// Auto-reload config when the config file changes (skip if we wrote it)
-					if (this.settings.configSource === 'file' && file.path === this.settings.configFilePath && !this._writingConfigFile) {
+					if (
+						this.settings.configSource === 'file' &&
+						file.path === this.settings.configFilePath &&
+						!this._writingConfigFile
+					) {
 						this.debouncedReloadConfig();
 					}
 				}
@@ -335,7 +365,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 	}
 
 	private _refreshSidebar(): void {
-		this.app.workspace.getLeavesOfType(SIDEBAR_VIEW_TYPE).forEach(leaf => {
+		this.app.workspace.getLeavesOfType(SIDEBAR_VIEW_TYPE).forEach((leaf) => {
 			if (leaf.view instanceof AnnotationSidebarView) {
 				leaf.view.render();
 			}
@@ -369,11 +399,15 @@ export default class AnnotationManagerPlugin extends Plugin {
 					attr: { 'aria-label': 'Annotation Manager: show annotations' },
 				});
 				setIcon(btn, 'message-square');
-				btn.addEventListener('click', () => { void this.toggleSidebar(); });
+				btn.addEventListener('click', () => {
+					void this.toggleSidebar();
+				});
 				this.register(() => btn.remove());
 				return;
 			}
-		} catch (e) { console.warn('Annotation Manager: rightRibbon button injection failed', e); }
+		} catch (e) {
+			console.warn('Annotation Manager: rightRibbon button injection failed', e);
+		}
 
 		// Approach 2: querySelector for the right ribbon DOM element
 		try {
@@ -384,11 +418,15 @@ export default class AnnotationManagerPlugin extends Plugin {
 					attr: { 'aria-label': 'Annotation Manager: show annotations' },
 				});
 				setIcon(btn, 'message-square');
-				btn.addEventListener('click', () => { void this.toggleSidebar(); });
+				btn.addEventListener('click', () => {
+					void this.toggleSidebar();
+				});
 				this.register(() => btn.remove());
 				return;
 			}
-		} catch (e) { console.warn('Annotation Manager: right ribbon DOM button injection failed', e); }
+		} catch (e) {
+			console.warn('Annotation Manager: right ribbon DOM button injection failed', e);
+		}
 
 		// Approach 3: append to the right split container
 		try {
@@ -396,13 +434,20 @@ export default class AnnotationManagerPlugin extends Plugin {
 			if (containerEl) {
 				const btn = containerEl.createEl('div', {
 					cls: 'cc-right-panel-btn',
-					attr: { 'aria-label': 'Annotation Manager: show annotations', title: 'Annotation Manager' },
+					attr: {
+						'aria-label': 'Annotation Manager: show annotations',
+						title: 'Annotation Manager',
+					},
 				});
 				setIcon(btn, 'message-square');
-				btn.addEventListener('click', () => { void this.toggleSidebar(); });
+				btn.addEventListener('click', () => {
+					void this.toggleSidebar();
+				});
 				this.register(() => btn.remove());
 			}
-		} catch (e) { console.warn('Annotation Manager: right split button injection failed', e); }
+		} catch (e) {
+			console.warn('Annotation Manager: right split button injection failed', e);
+		}
 	}
 
 	// Per-identifier colors are applied as inline styles (editor decorations in
@@ -418,7 +463,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 		this.styleVersion++;
 		this.updateStyleSheet();
 		this.app.workspace.updateOptions();
-		this.app.workspace.iterateAllLeaves(leaf => {
+		this.app.workspace.iterateAllLeaves((leaf) => {
 			if (leaf.view instanceof MarkdownView) {
 				leaf.view.previewMode.rerender(true);
 			}
@@ -552,7 +597,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 	private async indexAllFiles() {
 		const files = this.app.vault.getMarkdownFiles();
-		await Promise.all(files.map(f => this.indexFile(f)));
+		await Promise.all(files.map((f) => this.indexFile(f)));
 		this._refreshSidebar();
 	}
 
@@ -582,7 +627,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 			await this.saveSettings();
 			new Notice(`Config file saved: ${path}`);
 		} catch (e) {
-			new Notice(`Failed to write config file: ${e}`);
+			new Notice(`Failed to write config file: ${e instanceof Error ? e.message : String(e)}`);
 		}
 	}
 
@@ -598,8 +643,13 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 		// Guard against wiping all styles when the config table is missing or
 		// malformed (parseConfigTable returns {} in that case).
-		if (Object.keys(parsed).length === 0 && Object.keys(this.settings.identifierStyles).length > 0) {
-			new Notice(`No identifiers found in ${path} — keeping existing styles. Check the table format.`);
+		if (
+			Object.keys(parsed).length === 0 &&
+			Object.keys(this.settings.identifierStyles).length > 0
+		) {
+			new Notice(
+				`No identifiers found in ${path} — keeping existing styles. Check the table format.`,
+			);
 			return;
 		}
 
@@ -618,7 +668,9 @@ export default class AnnotationManagerPlugin extends Plugin {
 			}
 		}
 
-		new Notice(`Loaded ${Object.keys(this.settings.identifierStyles).length} identifiers from ${path}`);
+		new Notice(
+			`Loaded ${Object.keys(this.settings.identifierStyles).length} identifiers from ${path}`,
+		);
 	}
 
 	// ── Bibliography integration ─────────────────────────────────────────────
@@ -630,7 +682,9 @@ export default class AnnotationManagerPlugin extends Plugin {
 				// This modifies a global Obsidian setting — noted in the README.
 				(this.app.vault as unknown as VaultInternals).setConfig?.('showUnsupportedFiles', true);
 				(this.app as unknown as AppInternals).saveLocalStorage?.();
-			} catch (e) { console.warn('Annotation Manager: enabling "Show all file types" failed', e); }
+			} catch (e) {
+				console.warn('Annotation Manager: enabling "Show all file types" failed', e);
+			}
 		}
 		// CSS hiding for showBibFilesInBrowser=false is handled in updateStyleSheet
 		this.updateStyleSheet();
@@ -699,7 +753,13 @@ export default class AnnotationManagerPlugin extends Plugin {
 		if (annotations.length > 0) {
 			page.fields.set(
 				'cc',
-				annotations.map(a => ({ parent: a.parent, child: a.child, text: a.text, line: a.line, citation: a.citation })),
+				annotations.map((a) => ({
+					parent: a.parent,
+					child: a.child,
+					text: a.text,
+					line: a.line,
+					citation: a.citation,
+				})),
 			);
 		} else {
 			page.fields.delete('cc');
@@ -712,15 +772,24 @@ export default class AnnotationManagerPlugin extends Plugin {
 const BIB_VIEW_TYPE = 'annotation-manager-bib';
 
 class BibFileView extends FileView {
-	constructor(leaf: WorkspaceLeaf) { super(leaf); }
+	constructor(leaf: WorkspaceLeaf) {
+		super(leaf);
+	}
 
-	getViewType(): string { return BIB_VIEW_TYPE; }
-	getDisplayText(): string { return this.file?.name ?? 'BibTeX'; }
-	canAcceptExtension(extension: string): boolean { return extension === 'bib'; }
+	getViewType(): string {
+		return BIB_VIEW_TYPE;
+	}
+	getDisplayText(): string {
+		return this.file?.name ?? 'BibTeX';
+	}
+	canAcceptExtension(extension: string): boolean {
+		return extension === 'bib';
+	}
 
 	async onLoadFile(_file: TFile): Promise<void> {
 		this.contentEl.empty();
-		this.contentEl.createDiv({ cls: 'cc-bib-view-hint' })
+		this.contentEl
+			.createDiv({ cls: 'cc-bib-view-hint' })
 			.createEl('p', { text: 'Use the "Insert citation" command to pick entries from this file.' });
 	}
 
@@ -767,7 +836,7 @@ class BibFileSuggestModal extends SuggestModal<BibFileItem> {
 		super(app);
 		this.setPlaceholder('Select a .bib file…');
 		this.specificFile = specificBibFileName
-			? bibFiles.find(f => f.name === specificBibFileName) ?? null
+			? (bibFiles.find((f) => f.name === specificBibFileName) ?? null)
 			: null;
 	}
 
@@ -776,7 +845,7 @@ class BibFileSuggestModal extends SuggestModal<BibFileItem> {
 		const items: BibFileItem[] = [];
 
 		const others = this.bibFiles.filter(
-			f => f !== this.specificFile && (!q || f.name.toLowerCase().includes(q))
+			(f) => f !== this.specificFile && (!q || f.name.toLowerCase().includes(q)),
 		);
 
 		if (this.specificFile && (!q || this.specificFile.name.toLowerCase().includes(q))) {
@@ -784,7 +853,7 @@ class BibFileSuggestModal extends SuggestModal<BibFileItem> {
 			if (others.length > 0) items.push({ kind: 'sep' });
 		}
 
-		items.push(...others.map(f => ({ kind: 'file' as const, file: f, linked: false })));
+		items.push(...others.map((f) => ({ kind: 'file' as const, file: f, linked: false })));
 		return items;
 	}
 
@@ -796,16 +865,23 @@ class BibFileSuggestModal extends SuggestModal<BibFileItem> {
 		const row = el.createDiv({ cls: 'cc-suggest-row' });
 		row.createEl('span', { text: item.file.name, cls: 'cc-suggest-id' });
 		if (item.linked) {
-			row.createEl('span', { text: 'linked', cls: 'cc-suggest-badge' });
+			row.createEl('span', { text: 'Linked', cls: 'cc-suggest-badge' });
 		}
 	}
 
 	onChooseSuggestion(item: BibFileItem): void {
 		if (item.kind === 'sep') {
 			// Separator accidentally selected — reopen the modal
-			window.setTimeout(() => new BibFileSuggestModal(
-				this.app, this.bibFiles, this.specificBibFileName, this.onChoose
-			).open(), 50);
+			window.setTimeout(
+				() =>
+					new BibFileSuggestModal(
+						this.app,
+						this.bibFiles,
+						this.specificBibFileName,
+						this.onChoose,
+					).open(),
+				50,
+			);
 			return;
 		}
 		this.onChoose(item.file);
@@ -827,10 +903,11 @@ class CitationSuggestModal extends SuggestModal<BibEntry> {
 	getSuggestions(query: string): BibEntry[] {
 		const q = query.toLowerCase();
 		if (!q) return this.entries;
-		return this.entries.filter(e =>
-			e.key.toLowerCase().includes(q) ||
-			e.author.toLowerCase().includes(q) ||
-			e.title.toLowerCase().includes(q)
+		return this.entries.filter(
+			(e) =>
+				e.key.toLowerCase().includes(q) ||
+				e.author.toLowerCase().includes(q) ||
+				e.title.toLowerCase().includes(q),
 		);
 	}
 
@@ -873,14 +950,14 @@ class IdentifierSuggestModal extends SuggestModal<string> {
 		}
 
 		const q = query.toLowerCase();
-		return [...ids].sort().filter(id => !q || id.toLowerCase().includes(q));
+		return [...ids].sort().filter((id) => !q || id.toLowerCase().includes(q));
 	}
 
 	renderSuggestion(id: string, el: HTMLElement): void {
 		const row = el.createDiv({ cls: 'cc-suggest-row' });
 		row.createEl('span', { text: id, cls: 'cc-suggest-id' });
 		if (this.plugin.settings.identifierStyles[id]) {
-			row.createEl('span', { text: 'styled', cls: 'cc-suggest-badge' });
+			row.createEl('span', { text: 'Styled', cls: 'cc-suggest-badge' });
 		}
 	}
 

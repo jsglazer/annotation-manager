@@ -1,10 +1,10 @@
 export interface Annotation {
 	parent: string;
-	child: string;   // empty string when no child is specified
+	child: string; // empty string when no child is specified
 	text: string;
 	from: number;
 	to: number;
-	line: number;    // 1-based line number in the file
+	line: number; // 1-based line number in the file
 	citation: string; // key from {=/{key}/=} immediately following this annotation, or ''
 }
 

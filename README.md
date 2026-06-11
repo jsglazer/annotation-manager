@@ -9,7 +9,6 @@ Annotate text inline in Obsidian, view all annotations in a unified sidebar, sty
 <img src="text_preview.png" width="600"/>
 <img src="dvjs.png" width="800"/>
 
-
 ## Documentation (Wiki)
 
 Full documentation is in the [GitHub Wiki](https://github.com/jsglazer/annotation-manager/wiki):
@@ -20,7 +19,6 @@ Full documentation is in the [GitHub Wiki](https://github.com/jsglazer/annotatio
 - [DataviewJS Examples](https://github.com/jsglazer/annotation-manager/wiki/DataviewJS-Examples) — querying annotations and bibliography
 
 ---
-
 
 ## What it does
 
@@ -47,7 +45,6 @@ This approach {={math/hot}maximizes the posterior=} under the prior.
 
 ---
 
-
 ## Notes
 
 - Tested with the built-in and Minimal themes only
@@ -57,4 +54,4 @@ This approach {={math/hot}maximizes the posterior=} under the prior.
 
 ---
 
-*Written by Claude!*
+_Written by Claude!_

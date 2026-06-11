@@ -1,10 +1,4 @@
-import {
-	Decoration,
-	DecorationSet,
-	EditorView,
-	ViewPlugin,
-	ViewUpdate,
-} from '@codemirror/view';
+import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
 import { RangeSetBuilder } from '@codemirror/state';
 import { IdentifierStyle, isValidFontSize, resolvedClass, resolvedStyle } from './settings';
 import AnnotationManagerPlugin from './main';
@@ -70,7 +64,8 @@ function makeColorMark(cls: string, style: IdentifierStyle | null): Decoration {
 		classes.push('cc-fg');
 	}
 	if (style?.backgroundColor) parts.push(`background-color: ${style.backgroundColor}`);
-	if (style?.fontSize && isValidFontSize(style.fontSize)) parts.push(`font-size: ${style.fontSize.trim()}`);
+	if (style?.fontSize && isValidFontSize(style.fontSize))
+		parts.push(`font-size: ${style.fontSize.trim()}`);
 	if (parts.length > 0) classes.push('cc-styled');
 
 	const spec: { class: string; attributes?: Record<string, string> } = {
@@ -140,26 +135,23 @@ function buildDecorations(view: EditorView, plugin: AnnotationManagerPlugin): Bu
 			const contentStart = start + prefixLen;
 			const suffixStart = end - 2; // start of =}
 
-			const cursorInside = selection.ranges.some(r => r.from < end && r.to > start);
+			const cursorInside = selection.ranges.some((r) => r.from < end && r.to > start);
 
 			if (inLP && !cursorInside && plugin.syntaxHidingEnabled) {
 				// Hide the prefix ({={identifier}) and suffix (=}), mark the content only
 				builder.add(start, contentStart, HIDE);
 				if (contentStart < suffixStart) {
-					const textMark = (plugin.textFormattingEnabled && cls)
-						? makeColorMark(cls, style)
-						: NEUTRAL_MARK;
+					const textMark =
+						plugin.textFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
 					addContentMarks(builder, contentStart, suffixStart, content, textMark);
 				}
 				builder.add(suffixStart, end, HIDE);
 			} else {
 				// Source mode or cursor inside LP: apply separate marks for identifier and content.
-				const idMark = (plugin.identifierFormattingEnabled && cls)
-					? makeColorMark(cls, style)
-					: NEUTRAL_MARK;
-				const textMark = (plugin.textFormattingEnabled && cls)
-					? makeColorMark(cls, style)
-					: NEUTRAL_MARK;
+				const idMark =
+					plugin.identifierFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
+				const textMark =
+					plugin.textFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
 
 				if (contentStart > start) builder.add(start, contentStart, idMark);
 
@@ -199,11 +191,14 @@ export function createCitationViewPlugin(plugin: AnnotationManagerPlugin) {
 				}
 			}
 		},
-		{ decorations: v => v.decorations },
+		{ decorations: (v) => v.decorations },
 	);
 }
 
-function buildCitationDecorations(view: EditorView, plugin: AnnotationManagerPlugin): DecorationSet {
+function buildCitationDecorations(
+	view: EditorView,
+	plugin: AnnotationManagerPlugin,
+): DecorationSet {
 	const builder = new RangeSetBuilder<Decoration>();
 	const shouldHide = !plugin.citationVisibilityEnabled;
 	const shouldColor = plugin.citationVisibilityEnabled && !!plugin.settings.citationColor;
@@ -212,9 +207,9 @@ function buildCitationDecorations(view: EditorView, plugin: AnnotationManagerPlu
 	const mark = shouldHide
 		? HIDE
 		: Decoration.mark({
-			class: 'cc-citation',
-			attributes: { style: `color: ${plugin.settings.citationColor}` },
-		});
+				class: 'cc-citation',
+				attributes: { style: `color: ${plugin.settings.citationColor}` },
+			});
 
 	for (const { from, to } of view.visibleRanges) {
 		const text = view.state.doc.sliceString(from, to);
@@ -252,7 +247,9 @@ export function createCommentViewPlugin(plugin: AnnotationManagerPlugin) {
 			update(update: ViewUpdate) {
 				const styleChanged = plugin.styleVersion !== this.lastStyleVersion;
 				const needsRebuild =
-					update.docChanged || update.viewportChanged || styleChanged ||
+					update.docChanged ||
+					update.viewportChanged ||
+					styleChanged ||
 					(update.selectionSet && this.selectionTouchesAnnotation(update));
 				if (needsRebuild) {
 					this.lastStyleVersion = plugin.styleVersion;
@@ -266,14 +263,16 @@ export function createCommentViewPlugin(plugin: AnnotationManagerPlugin) {
 			// annotation (the cursorInside reveal logic); skip the rebuild otherwise.
 			private selectionTouchesAnnotation(update: ViewUpdate): boolean {
 				const touches = (ranges: readonly { from: number; to: number }[]) =>
-					ranges.some(r => this.annotationRanges.some(([a, b]) => r.from < b && r.to > a));
-				return touches(update.startState.selection.ranges) || touches(update.state.selection.ranges);
+					ranges.some((r) => this.annotationRanges.some(([a, b]) => r.from < b && r.to > a));
+				return (
+					touches(update.startState.selection.ranges) || touches(update.state.selection.ranges)
+				);
 			}
 
 			destroy() {
 				plugin.editorViews.delete(this.cmView);
 			}
 		},
-		{ decorations: v => v.decorations },
+		{ decorations: (v) => v.decorations },
 	);
 }

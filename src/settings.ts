@@ -1,5 +1,6 @@
 import { App, FuzzySuggestModal, PluginSettingTab, Setting, TFile } from 'obsidian';
 import AnnotationManagerPlugin from './main';
+import { isUnsafeKey } from './util';
 
 export interface IdentifierStyle {
 	fontSize: string;
@@ -37,10 +38,13 @@ export const EMPTY_STYLE: IdentifierStyle = {
 // --- Helpers shared with decoration.ts and main.ts ---
 
 export function identifierKeyToClass(key: string): string {
-	return 'cc-id-' + key
-		.replace(/\/\*/g, '-wc')
-		.replace(/\//g, '-')
-		.replace(/[^a-zA-Z0-9-]/g, '-');
+	return (
+		'cc-id-' +
+		key
+			.replace(/\/\*/g, '-wc')
+			.replace(/\//g, '-')
+			.replace(/[^a-zA-Z0-9-]/g, '-')
+	);
 }
 
 export function resolvedClass(
@@ -118,15 +122,17 @@ export function parseConfigTable(content: string): Record<string, IdentifierStyl
 		if (!separatorSeen) continue;
 
 		const cols = trimmed
-			.replace(/^\|/, '').replace(/\|$/, '')
+			.replace(/^\|/, '')
+			.replace(/\|$/, '')
 			.split('|')
-			.map(c => c.trim());
+			.map((c) => c.trim());
 
 		const [name = '', fontColor = '', bgColor = '', fontSize = ''] = cols;
 		// 6-col format includes Bib File column before Example; 5-col is legacy
 		const bibFile = cols.length >= 6 ? (cols[4] ?? '').replace(/^\[|\]$/g, '').trim() : '';
-		// Skip empty names and placeholder rows like "(no identifiers configured)"
-		if (!name || name.startsWith('(')) continue;
+		// Skip empty names, placeholder rows like "(no identifiers configured)",
+		// and prototype-polluting keys from untrusted file content.
+		if (!name || name.startsWith('(') || isUnsafeKey(name)) continue;
 
 		styles[name] = {
 			fontColor: normalizeHex(fontColor),
@@ -154,7 +160,7 @@ export function injectExamples(content: string, styles: Record<string, Identifie
 	let headerSeen = false;
 	let separatorSeen = false;
 
-	const updated = lines.map(line => {
+	const updated = lines.map((line) => {
 		const trimmed = line.trim();
 		if (!trimmed.startsWith('|')) return line;
 
@@ -163,10 +169,17 @@ export function injectExamples(content: string, styles: Record<string, Identifie
 			return line;
 		}
 
-		if (!headerSeen) { headerSeen = true; return line; }
+		if (!headerSeen) {
+			headerSeen = true;
+			return line;
+		}
 		if (!separatorSeen) return line;
 
-		const cols = trimmed.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+		const cols = trimmed
+			.replace(/^\|/, '')
+			.replace(/\|$/, '')
+			.split('|')
+			.map((c) => c.trim());
 		const [name = ''] = cols;
 		if (!name || name.startsWith('(')) return line;
 
@@ -198,9 +211,15 @@ export function renderConfigTable(styles: Record<string, IdentifierStyle>): stri
 	].join('\n');
 
 	const entries = Object.entries(styles).sort(([a], [b]) => a.localeCompare(b));
-	const rows = entries.length > 0
-		? entries.map(([id, s]) => `| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} | ${s.bibFile ?? ''} | ${makeExampleCell(s)} |`).join('\n')
-		: '| (no identifiers configured) | | | | | |';
+	const rows =
+		entries.length > 0
+			? entries
+					.map(
+						([id, s]) =>
+							`| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} | ${s.bibFile ?? ''} | ${makeExampleCell(s)} |`,
+					)
+					.join('\n')
+			: '| (no identifiers configured) | | | | | |';
 
 	return header + '\n' + rows + '\n';
 }
@@ -238,14 +257,18 @@ function vaultFolderPaths(app: App, query: string): string[] {
 			node = node.parent;
 		}
 	}
-	return [...folders].filter(p => p.toLowerCase().includes(q)).sort().slice(0, 12);
+	return [...folders]
+		.filter((p) => p.toLowerCase().includes(q))
+		.sort()
+		.slice(0, 12);
 }
 
 function vaultMarkdownPaths(app: App, query: string): string[] {
 	const q = query.toLowerCase();
-	return app.vault.getMarkdownFiles()
-		.map(f => f.path)
-		.filter(p => p.toLowerCase().includes(q))
+	return app.vault
+		.getMarkdownFiles()
+		.map((f) => f.path)
+		.filter((p) => p.toLowerCase().includes(q))
 		.sort()
 		.slice(0, 12);
 }
@@ -287,13 +310,13 @@ function attachTypeahead(
 		const rect = input.getBoundingClientRect();
 		dropdown = activeDocument.body.createDiv({ cls: 'cc-typeahead-dropdown' });
 		dropdown.setCssStyles({
-			top: (rect.bottom + window.scrollY) + 'px',
-			left: (rect.left + window.scrollX) + 'px',
+			top: rect.bottom + window.scrollY + 'px',
+			left: rect.left + window.scrollX + 'px',
 			width: rect.width + 'px',
 		});
 		activeTypeaheadClosers.add(close);
 
-		els = items.map(item => {
+		els = items.map((item) => {
 			const el = dropdown!.createDiv({ cls: 'cc-typeahead-item', text: item });
 			el.addEventListener('mousedown', (e) => {
 				e.preventDefault();
@@ -308,15 +331,29 @@ function attachTypeahead(
 	// addEventListener (not input.onkeydown =) so other handlers on the input survive
 	input.addEventListener('keydown', (e) => {
 		if (!dropdown) return;
-		if (e.key === 'ArrowDown') { e.preventDefault(); activeIndex = Math.min(activeIndex + 1, els.length - 1); updateActive(); }
-		else if (e.key === 'ArrowUp') { e.preventDefault(); activeIndex = Math.max(activeIndex - 1, 0); updateActive(); }
-		else if (e.key === 'Enter' && activeIndex >= 0) { e.preventDefault(); const v = els[activeIndex]?.textContent ?? ''; input.value = v; onSelect(v); close(); }
-		else if (e.key === 'Escape') close();
+		if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			activeIndex = Math.min(activeIndex + 1, els.length - 1);
+			updateActive();
+		} else if (e.key === 'ArrowUp') {
+			e.preventDefault();
+			activeIndex = Math.max(activeIndex - 1, 0);
+			updateActive();
+		} else if (e.key === 'Enter' && activeIndex >= 0) {
+			e.preventDefault();
+			const v = els[activeIndex]?.textContent ?? '';
+			input.value = v;
+			onSelect(v);
+			close();
+		} else if (e.key === 'Escape') close();
 	});
 
 	input.addEventListener('input', () => {
 		const q = input.value.trim();
-		if (!q) { close(); return; }
+		if (!q) {
+			close();
+			return;
+		}
 		open(getItems(q));
 	});
 
@@ -345,11 +382,21 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		const infoPanel = containerEl.createDiv({ cls: 'cc-info-panel' });
 		const p1 = infoPanel.createEl('p');
 		p1.appendText('If you encounter errors or have questions, please submit an Issue on the ');
-		p1.createEl('a', { text: 'GitHub page', href: 'https://github.com/jsglazer/annotation-manager', attr: { target: '_blank', rel: 'noopener' } });
+		p1.createEl('a', {
+			text: 'GitHub page',
+			href: 'https://github.com/jsglazer/annotation-manager',
+			attr: { target: '_blank', rel: 'noopener' },
+		});
 		p1.appendText('.');
 		const p2 = infoPanel.createEl('p');
-		p2.appendText('If you like this plugin…thank Claude, who wrote it all! To see how I made this plugin without coding a single line, see the ');
-		p2.createEl('a', { text: 'Updates folder', href: 'https://github.com/jsglazer/annotation-manager/tree/main/Updates', attr: { target: '_blank', rel: 'noopener' } });
+		p2.appendText(
+			'If you like this plugin…thank Claude, who wrote it all! To see how I made this plugin without coding a single line, see the ',
+		);
+		p2.createEl('a', {
+			text: 'Updates folder',
+			href: 'https://github.com/jsglazer/annotation-manager/tree/main/Updates',
+			attr: { target: '_blank', rel: 'noopener' },
+		});
 		p2.appendText(' in the repository.');
 
 		// ── Bibliography ───────────────────────────────────────────────────────
@@ -357,15 +404,21 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Bib files folder')
-			.setDesc('Vault-relative path to the folder containing .bib files (e.g. Meta/Bibs). Required before citations can be inserted.')
-			.addText(t => {
-				attachTypeahead(t.inputEl, (q) => vaultFolderPaths(this.app, q), (v) => {
-					this.plugin.settings.bibFolderPath = v;
-					void this.plugin.saveSettings();
-				});
+			.setDesc(
+				'Vault-relative path to the folder containing .bib files (e.g. Meta/Bibs). Required before citations can be inserted.',
+			)
+			.addText((t) => {
+				attachTypeahead(
+					t.inputEl,
+					(q) => vaultFolderPaths(this.app, q),
+					(v) => {
+						this.plugin.settings.bibFolderPath = v;
+						void this.plugin.saveSettings();
+					},
+				);
 				t.setPlaceholder('Meta/Bibs')
 					.setValue(this.plugin.settings.bibFolderPath)
-					.onChange(async v => {
+					.onChange(async (v) => {
 						this.plugin.settings.bibFolderPath = v.trim();
 						await this.plugin.saveSettings();
 					});
@@ -376,7 +429,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			'Citation color',
 			'Font color applied to citation markers {=/{key}/=} including delimiters. Leave blank to inherit.',
 			() => this.plugin.settings.citationColor,
-			async v => {
+			async (v) => {
 				this.plugin.settings.citationColor = v;
 				await this.plugin.saveSettings();
 				this.plugin.bumpStyleVersion();
@@ -385,14 +438,15 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Show .bib files in file browser')
-			.setDesc('When enabled, the plugin enables Obsidian\'s "Show all file types" so .bib files appear in the file explorer. When disabled, .bib files are hidden from view via CSS.')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.showBibFilesInBrowser)
-				.onChange(async v => {
+			.setDesc(
+				'When enabled, the plugin enables Obsidian\'s "Show all file types" so .bib files appear in the file explorer. When disabled, .bib files are hidden from view via CSS.',
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.showBibFilesInBrowser).onChange(async (v) => {
 					this.plugin.settings.showBibFilesInBrowser = v;
 					await this.plugin.saveSettings();
 					this.plugin.applyBibFileVisibility();
-				})
+				}),
 			);
 
 		// ── Config Source ──────────────────────────────────────────────────────
@@ -401,15 +455,16 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Identifier style source')
 			.setDesc('Define styles in this UI, or read them from a Markdown table in your vault')
-			.addDropdown(dd => dd
-				.addOption('settings', 'Settings UI')
-				.addOption('file', 'Config file')
-				.setValue(this.plugin.settings.configSource)
-				.onChange(async (v) => {
-					this.plugin.settings.configSource = v as 'settings' | 'file';
-					await this.plugin.saveSettings();
-					this.display();
-				})
+			.addDropdown((dd) =>
+				dd
+					.addOption('settings', 'Settings UI')
+					.addOption('file', 'Config file')
+					.setValue(this.plugin.settings.configSource)
+					.onChange(async (v) => {
+						this.plugin.settings.configSource = v as 'settings' | 'file';
+						await this.plugin.saveSettings();
+						this.display();
+					}),
 			);
 
 		if (this.plugin.settings.configSource === 'file') {
@@ -424,53 +479,59 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Config file path')
-			.setDesc('Path to a Markdown file in your vault (relative to vault root) containing the style table')
-			.addText(t => {
+			.setDesc(
+				'Path to a Markdown file in your vault (relative to vault root) containing the style table',
+			)
+			.addText((t) => {
 				configPathInput = t.inputEl;
-				attachTypeahead(t.inputEl, (q) => vaultMarkdownPaths(this.app, q), (v) => {
-					this.plugin.settings.configFilePath = v;
-					void this.plugin.saveSettings();
-					t.setValue(v);
-				});
+				attachTypeahead(
+					t.inputEl,
+					(q) => vaultMarkdownPaths(this.app, q),
+					(v) => {
+						this.plugin.settings.configFilePath = v;
+						void this.plugin.saveSettings();
+						t.setValue(v);
+					},
+				);
 				t.setPlaceholder('OccConfig.md')
 					.setValue(this.plugin.settings.configFilePath)
-					.onChange(async v => {
+					.onChange(async (v) => {
 						this.plugin.settings.configFilePath = v.trim() || 'OccConfig.md';
 						await this.plugin.saveSettings();
 					});
 			})
-			.addButton(btn => btn
-				.setButtonText('Browse…')
-				.onClick(() => {
+			.addButton((btn) =>
+				btn.setButtonText('Browse…').onClick(() => {
 					new VaultFileSuggestModal(this.app, (file) => {
 						this.plugin.settings.configFilePath = file.path;
 						void this.plugin.saveSettings();
 						if (configPathInput) configPathInput.value = file.path;
 					}).open();
-				})
+				}),
 			);
 
 		new Setting(containerEl)
 			.setName('Config file actions')
-			.addButton(btn => btn
-				.setButtonText('Create / update config file')
-				.setCta()
-				.onClick(async () => {
-					await this.plugin.createConfigFile();
-					this.display();
-				})
+			.addButton((btn) =>
+				btn
+					.setButtonText('Create / update config file')
+					.setCta()
+					.onClick(async () => {
+						await this.plugin.createConfigFile();
+						this.display();
+					}),
 			)
-			.addButton(btn => btn
-				.setButtonText('Reload from file')
-				.onClick(async () => {
+			.addButton((btn) =>
+				btn.setButtonText('Reload from file').onClick(async () => {
 					await this.plugin.reloadConfigFile();
 					this.display();
-				})
+				}),
 			);
 
 		containerEl.createEl('p', {
-			text: 'Table columns: Identifier | Font Color | Background Color | Font Size | Bib File | Example. '
-				+ 'No # prefix for hex colors. The plugin reloads automatically when the file is saved.',
+			text:
+				'Table columns: Identifier | Font Color | Background Color | Font Size | Bib File | Example. ' +
+				'No # prefix for hex colors. The plugin reloads automatically when the file is saved.',
 			cls: 'setting-item-description',
 		});
 
@@ -503,8 +564,9 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 	private renderSettingsSourceUI(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName('Identifier styles').setHeading();
 		containerEl.createEl('p', {
-			text: 'Add an identifier (e.g. "math/hot") or a wildcard (e.g. "math/*"). '
-				+ 'Specific identifiers take precedence over wildcards.',
+			text:
+				'Add an identifier (e.g. "math/hot") or a wildcard (e.g. "math/*"). ' +
+				'Specific identifiers take precedence over wildcards.',
 		});
 
 		for (const id of Object.keys(this.plugin.settings.identifierStyles)) {
@@ -515,12 +577,12 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Identifier')
 			.setDesc('Format: parent/child  or  parent/* to match all children of a parent')
-			.addText(text =>
-				text
-					.setPlaceholder('math/hot')
-					.onChange(v => { this.pendingIdentifier = v.trim(); }),
+			.addText((text) =>
+				text.setPlaceholder('math/hot').onChange((v) => {
+					this.pendingIdentifier = v.trim();
+				}),
 			)
-			.addButton(btn =>
+			.addButton((btn) =>
 				btn
 					.setButtonText('Add')
 					.setCta()
@@ -561,11 +623,11 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		new Setting(wrap)
 			.setName('Font size')
 			.setDesc('CSS value, e.g. 14px or 1.2em — leave blank to inherit')
-			.addText(t =>
+			.addText((t) =>
 				t
 					.setPlaceholder('inherit')
 					.setValue(style.fontSize)
-					.onChange(async v => {
+					.onChange(async (v) => {
 						style.fontSize = v;
 						await this.plugin.saveSettings();
 						this.plugin.bumpStyleVersion();
@@ -576,11 +638,11 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		new Setting(wrap)
 			.setName('Bib file')
 			.setDesc('Optional .bib filename to associate with this identifier (e.g. ToRead.bib)')
-			.addText(t =>
+			.addText((t) =>
 				t
 					.setPlaceholder('ToRead.bib')
 					.setValue(style.bibFile ?? '')
-					.onChange(async v => {
+					.onChange(async (v) => {
 						style.bibFile = v.trim();
 						await this.plugin.saveSettings();
 					}),
@@ -591,7 +653,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			'Font color',
 			'Hex color for the annotation text',
 			() => style.fontColor,
-			async v => {
+			async (v) => {
 				style.fontColor = v;
 				await this.plugin.saveSettings();
 				this.plugin.bumpStyleVersion();
@@ -604,7 +666,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			'Background color',
 			'Hex color for the annotation background',
 			() => style.backgroundColor,
-			async v => {
+			async (v) => {
 				style.backgroundColor = v;
 				await this.plugin.saveSettings();
 				this.plugin.bumpStyleVersion();
@@ -612,7 +674,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			},
 		);
 
-		new Setting(wrap).addButton(btn =>
+		new Setting(wrap).addButton((btn) =>
 			btn
 				.setButtonText('Remove')
 				.setWarning()
@@ -673,14 +735,16 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 				void onChange('');
 			}
 		});
-
 	}
 }
 
 // ── Vault file picker modal ───────────────────────────────────────────────
 
 class VaultFileSuggestModal extends FuzzySuggestModal<TFile> {
-	constructor(app: App, private onChoose: (file: TFile) => void) {
+	constructor(
+		app: App,
+		private onChoose: (file: TFile) => void,
+	) {
 		super(app);
 		this.setPlaceholder('Search for a Markdown file…');
 	}

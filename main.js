@@ -26,6 +26,13 @@ var import_obsidian3 = require("obsidian");
 
 // src/settings.ts
 var import_obsidian = require("obsidian");
+
+// src/util.ts
+function isUnsafeKey(key) {
+  return key === "__proto__" || key === "constructor" || key === "prototype";
+}
+
+// src/settings.ts
 var DEFAULT_SETTINGS = {
   identifierStyles: {},
   configSource: "settings",
@@ -98,7 +105,7 @@ function parseConfigTable(content) {
     const cols = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
     const [name = "", fontColor = "", bgColor = "", fontSize = ""] = cols;
     const bibFile = cols.length >= 6 ? ((_a = cols[4]) != null ? _a : "").replace(/^\[|\]$/g, "").trim() : "";
-    if (!name || name.startsWith("(")) continue;
+    if (!name || name.startsWith("(") || isUnsafeKey(name)) continue;
     styles[name] = {
       fontColor: normalizeHex(fontColor),
       backgroundColor: normalizeHex(bgColor),
@@ -157,10 +164,12 @@ function renderConfigTable(styles) {
     "| ---------- | ---------- | ---------------- | --------- | -------- | ------- |"
   ].join("\n");
   const entries = Object.entries(styles).sort(([a], [b]) => a.localeCompare(b));
-  const rows = entries.length > 0 ? entries.map(([id, s]) => {
-    var _a;
-    return `| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} | ${(_a = s.bibFile) != null ? _a : ""} | ${makeExampleCell(s)} |`;
-  }).join("\n") : "| (no identifiers configured) | | | | | |";
+  const rows = entries.length > 0 ? entries.map(
+    ([id, s]) => {
+      var _a;
+      return `| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} | ${(_a = s.bibFile) != null ? _a : ""} | ${makeExampleCell(s)} |`;
+    }
+  ).join("\n") : "| (no identifiers configured) | | | | | |";
   return header + "\n" + rows + "\n";
 }
 function isValidHex(s) {
@@ -278,18 +287,34 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     const infoPanel = containerEl.createDiv({ cls: "cc-info-panel" });
     const p1 = infoPanel.createEl("p");
     p1.appendText("If you encounter errors or have questions, please submit an Issue on the ");
-    p1.createEl("a", { text: "GitHub page", href: "https://github.com/jsglazer/annotation-manager", attr: { target: "_blank", rel: "noopener" } });
+    p1.createEl("a", {
+      text: "GitHub page",
+      href: "https://github.com/jsglazer/annotation-manager",
+      attr: { target: "_blank", rel: "noopener" }
+    });
     p1.appendText(".");
     const p2 = infoPanel.createEl("p");
-    p2.appendText("If you like this plugin\u2026thank Claude, who wrote it all! To see how I made this plugin without coding a single line, see the ");
-    p2.createEl("a", { text: "Updates folder", href: "https://github.com/jsglazer/annotation-manager/tree/main/Updates", attr: { target: "_blank", rel: "noopener" } });
+    p2.appendText(
+      "If you like this plugin\u2026thank Claude, who wrote it all! To see how I made this plugin without coding a single line, see the "
+    );
+    p2.createEl("a", {
+      text: "Updates folder",
+      href: "https://github.com/jsglazer/annotation-manager/tree/main/Updates",
+      attr: { target: "_blank", rel: "noopener" }
+    });
     p2.appendText(" in the repository.");
     new import_obsidian.Setting(containerEl).setName("Bibliography").setHeading();
-    new import_obsidian.Setting(containerEl).setName("Bib files folder").setDesc("Vault-relative path to the folder containing .bib files (e.g. Meta/Bibs). Required before citations can be inserted.").addText((t) => {
-      attachTypeahead(t.inputEl, (q) => vaultFolderPaths(this.app, q), (v) => {
-        this.plugin.settings.bibFolderPath = v;
-        void this.plugin.saveSettings();
-      });
+    new import_obsidian.Setting(containerEl).setName("Bib files folder").setDesc(
+      "Vault-relative path to the folder containing .bib files (e.g. Meta/Bibs). Required before citations can be inserted."
+    ).addText((t) => {
+      attachTypeahead(
+        t.inputEl,
+        (q) => vaultFolderPaths(this.app, q),
+        (v) => {
+          this.plugin.settings.bibFolderPath = v;
+          void this.plugin.saveSettings();
+        }
+      );
       t.setPlaceholder("Meta/Bibs").setValue(this.plugin.settings.bibFolderPath).onChange(async (v) => {
         this.plugin.settings.bibFolderPath = v.trim();
         await this.plugin.saveSettings();
@@ -306,7 +331,9 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
         this.plugin.bumpStyleVersion();
       }
     );
-    new import_obsidian.Setting(containerEl).setName("Show .bib files in file browser").setDesc(`When enabled, the plugin enables Obsidian's "Show all file types" so .bib files appear in the file explorer. When disabled, .bib files are hidden from view via CSS.`).addToggle(
+    new import_obsidian.Setting(containerEl).setName("Show .bib files in file browser").setDesc(
+      `When enabled, the plugin enables Obsidian's "Show all file types" so .bib files appear in the file explorer. When disabled, .bib files are hidden from view via CSS.`
+    ).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.showBibFilesInBrowser).onChange(async (v) => {
         this.plugin.settings.showBibFilesInBrowser = v;
         await this.plugin.saveSettings();
@@ -329,13 +356,19 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
   }
   renderFileSourceUI(containerEl) {
     let configPathInput = null;
-    new import_obsidian.Setting(containerEl).setName("Config file path").setDesc("Path to a Markdown file in your vault (relative to vault root) containing the style table").addText((t) => {
+    new import_obsidian.Setting(containerEl).setName("Config file path").setDesc(
+      "Path to a Markdown file in your vault (relative to vault root) containing the style table"
+    ).addText((t) => {
       configPathInput = t.inputEl;
-      attachTypeahead(t.inputEl, (q) => vaultMarkdownPaths(this.app, q), (v) => {
-        this.plugin.settings.configFilePath = v;
-        void this.plugin.saveSettings();
-        t.setValue(v);
-      });
+      attachTypeahead(
+        t.inputEl,
+        (q) => vaultMarkdownPaths(this.app, q),
+        (v) => {
+          this.plugin.settings.configFilePath = v;
+          void this.plugin.saveSettings();
+          t.setValue(v);
+        }
+      );
       t.setPlaceholder("OccConfig.md").setValue(this.plugin.settings.configFilePath).onChange(async (v) => {
         this.plugin.settings.configFilePath = v.trim() || "OccConfig.md";
         await this.plugin.saveSettings();
@@ -613,7 +646,8 @@ function makeColorMark(cls, style) {
     classes.push("cc-fg");
   }
   if (style == null ? void 0 : style.backgroundColor) parts.push(`background-color: ${style.backgroundColor}`);
-  if ((style == null ? void 0 : style.fontSize) && isValidFontSize(style.fontSize)) parts.push(`font-size: ${style.fontSize.trim()}`);
+  if ((style == null ? void 0 : style.fontSize) && isValidFontSize(style.fontSize))
+    parts.push(`font-size: ${style.fontSize.trim()}`);
   if (parts.length > 0) classes.push("cc-styled");
   const spec = {
     class: classes.join(" ")
@@ -937,10 +971,11 @@ function parseFields(body) {
       if (i < len) i++;
     } else {
       const start = i;
-      while (i < len && body[i] !== "," && body[i] !== "\n" && body[i] !== "\r" && body[i] !== "}") i++;
+      while (i < len && body[i] !== "," && body[i] !== "\n" && body[i] !== "\r" && body[i] !== "}")
+        i++;
       value = body.slice(start, i).trim();
     }
-    if (name) fields[name] = value;
+    if (name && !isUnsafeKey(name)) fields[name] = value;
   }
   return fields;
 }
@@ -1072,7 +1107,9 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       callback: () => {
         this.identifierFormattingEnabled = !this.identifierFormattingEnabled;
         this.bumpStyleVersion();
-        new import_obsidian3.Notice(`Annotation bracket/identifier formatting ${this.identifierFormattingEnabled ? "enabled" : "disabled"}`);
+        new import_obsidian3.Notice(
+          `Annotation bracket/identifier formatting ${this.identifierFormattingEnabled ? "enabled" : "disabled"}`
+        );
       }
     });
     this.addCommand({
@@ -1081,7 +1118,9 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       callback: () => {
         this.textFormattingEnabled = !this.textFormattingEnabled;
         this.bumpStyleVersion();
-        new import_obsidian3.Notice(`Annotation text formatting ${this.textFormattingEnabled ? "enabled" : "disabled"}`);
+        new import_obsidian3.Notice(
+          `Annotation text formatting ${this.textFormattingEnabled ? "enabled" : "disabled"}`
+        );
       }
     });
     this.addCommand({
@@ -1098,12 +1137,16 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       name: "Insert citation",
       editorCallback: async (editor) => {
         if (!this.settings.bibFolderPath) {
-          new import_obsidian3.Notice("Annotation Manager: set the Bib files folder path in settings before inserting citations.");
+          new import_obsidian3.Notice(
+            "Annotation Manager: set the bib files folder path in settings before inserting citations."
+          );
           return;
         }
         const bibFiles = this.bibFilesInFolder();
         if (bibFiles.length === 0) {
-          new import_obsidian3.Notice(`No .bib files found in "${this.settings.bibFolderPath}". Check the folder path in settings.`);
+          new import_obsidian3.Notice(
+            `No .bib files found in "${this.settings.bibFolderPath}". Check the folder path in settings.`
+          );
           return;
         }
         const insertPos = editor.getCursor();
@@ -1277,7 +1320,10 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       if (containerEl) {
         const btn = containerEl.createEl("div", {
           cls: "cc-right-panel-btn",
-          attr: { "aria-label": "Annotation Manager: show annotations", title: "Annotation Manager" }
+          attr: {
+            "aria-label": "Annotation Manager: show annotations",
+            title: "Annotation Manager"
+          }
         });
         (0, import_obsidian3.setIcon)(btn, "message-square");
         btn.addEventListener("click", () => {
@@ -1437,7 +1483,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       await this.saveSettings();
       new import_obsidian3.Notice(`Config file saved: ${path}`);
     } catch (e) {
-      new import_obsidian3.Notice(`Failed to write config file: ${e}`);
+      new import_obsidian3.Notice(`Failed to write config file: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   async reloadConfigFile() {
@@ -1450,7 +1496,9 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     const content = await this.app.vault.read(file);
     const parsed = parseConfigTable(content);
     if (Object.keys(parsed).length === 0 && Object.keys(this.settings.identifierStyles).length > 0) {
-      new import_obsidian3.Notice(`No identifiers found in ${path} \u2014 keeping existing styles. Check the table format.`);
+      new import_obsidian3.Notice(
+        `No identifiers found in ${path} \u2014 keeping existing styles. Check the table format.`
+      );
       return;
     }
     this.settings.identifierStyles = parsed;
@@ -1465,7 +1513,9 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
         this._writingConfigFile = false;
       }
     }
-    new import_obsidian3.Notice(`Loaded ${Object.keys(this.settings.identifierStyles).length} identifiers from ${path}`);
+    new import_obsidian3.Notice(
+      `Loaded ${Object.keys(this.settings.identifierStyles).length} identifiers from ${path}`
+    );
   }
   // ── Bibliography integration ─────────────────────────────────────────────
   applyBibFileVisibility() {
@@ -1533,7 +1583,13 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     if (annotations.length > 0) {
       page.fields.set(
         "cc",
-        annotations.map((a) => ({ parent: a.parent, child: a.child, text: a.text, line: a.line, citation: a.citation }))
+        annotations.map((a) => ({
+          parent: a.parent,
+          child: a.child,
+          text: a.text,
+          line: a.line,
+          citation: a.citation
+        }))
       );
     } else {
       page.fields.delete("cc");
@@ -1615,17 +1671,20 @@ var BibFileSuggestModal = class _BibFileSuggestModal extends import_obsidian3.Su
     const row = el.createDiv({ cls: "cc-suggest-row" });
     row.createEl("span", { text: item.file.name, cls: "cc-suggest-id" });
     if (item.linked) {
-      row.createEl("span", { text: "linked", cls: "cc-suggest-badge" });
+      row.createEl("span", { text: "Linked", cls: "cc-suggest-badge" });
     }
   }
   onChooseSuggestion(item) {
     if (item.kind === "sep") {
-      window.setTimeout(() => new _BibFileSuggestModal(
-        this.app,
-        this.bibFiles,
-        this.specificBibFileName,
-        this.onChoose
-      ).open(), 50);
+      window.setTimeout(
+        () => new _BibFileSuggestModal(
+          this.app,
+          this.bibFiles,
+          this.specificBibFileName,
+          this.onChoose
+        ).open(),
+        50
+      );
       return;
     }
     this.onChoose(item.file);
@@ -1681,7 +1740,7 @@ var IdentifierSuggestModal = class extends import_obsidian3.SuggestModal {
     const row = el.createDiv({ cls: "cc-suggest-row" });
     row.createEl("span", { text: id, cls: "cc-suggest-id" });
     if (this.plugin.settings.identifierStyles[id]) {
-      row.createEl("span", { text: "styled", cls: "cc-suggest-badge" });
+      row.createEl("span", { text: "Styled", cls: "cc-suggest-badge" });
     }
   }
   onChooseSuggestion(id) {
