@@ -219,13 +219,11 @@ function contrastColor(hex: string): string {
 }
 
 function applyColorStyle(input: HTMLInputElement, hex: string): void {
-	input.style.backgroundColor = hex;
-	input.style.color = contrastColor(hex);
+	input.setCssStyles({ backgroundColor: hex, color: contrastColor(hex) });
 }
 
 function clearColorStyle(input: HTMLInputElement): void {
-	input.style.backgroundColor = '';
-	input.style.color = '';
+	input.setCssStyles({ backgroundColor: '', color: '' });
 }
 
 // --- Typeahead helpers ---
@@ -252,7 +250,7 @@ function vaultMarkdownPaths(app: App, query: string): string[] {
 		.slice(0, 12);
 }
 
-// Dropdowns are appended to document.body, so they outlive their input if the
+// Dropdowns are appended to the document body, so they outlive their input if the
 // settings tab closes while one is open. Track open dropdowns globally and let
 // the settings tab close them on hide().
 const activeTypeaheadClosers = new Set<() => void>();
@@ -287,10 +285,12 @@ function attachTypeahead(
 		if (items.length === 0) return;
 
 		const rect = input.getBoundingClientRect();
-		dropdown = document.body.createDiv({ cls: 'cc-typeahead-dropdown' });
-		dropdown.style.top = (rect.bottom + window.scrollY) + 'px';
-		dropdown.style.left = (rect.left + window.scrollX) + 'px';
-		dropdown.style.width = rect.width + 'px';
+		dropdown = activeDocument.body.createDiv({ cls: 'cc-typeahead-dropdown' });
+		dropdown.setCssStyles({
+			top: (rect.bottom + window.scrollY) + 'px',
+			left: (rect.left + window.scrollX) + 'px',
+			width: rect.width + 'px',
+		});
 		activeTypeaheadClosers.add(close);
 
 		els = items.map(item => {
@@ -320,7 +320,7 @@ function attachTypeahead(
 		open(getItems(q));
 	});
 
-	input.addEventListener('blur', () => setTimeout(close, 160));
+	input.addEventListener('blur', () => window.setTimeout(close, 160));
 }
 
 // --- Settings tab ---
@@ -341,7 +341,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		containerEl.createEl('h2', { text: 'Annotation Manager' });
+		new Setting(containerEl).setName('Annotation Manager').setHeading();
 
 		const infoPanel = containerEl.createDiv({ cls: 'cc-info-panel' });
 		const p1 = infoPanel.createEl('p');
@@ -354,7 +354,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		p2.appendText(' in the repository.');
 
 		// ── Bibliography ───────────────────────────────────────────────────────
-		containerEl.createEl('h3', { text: 'Bibliography' });
+		new Setting(containerEl).setName('Bibliography').setHeading();
 
 		new Setting(containerEl)
 			.setName('Bib files folder')
@@ -397,7 +397,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			);
 
 		// ── Config Source ──────────────────────────────────────────────────────
-		containerEl.createEl('h3', { text: 'Config Source' });
+		new Setting(containerEl).setName('Config Source').setHeading();
 
 		new Setting(containerEl)
 			.setName('Identifier style source')
@@ -457,13 +457,13 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 				.setButtonText('Create / update config file')
 				.setCta()
 				.onClick(() => {
-					this.plugin.createConfigFile().then(() => this.display());
+					void this.plugin.createConfigFile().then(() => this.display());
 				})
 			)
 			.addButton(btn => btn
 				.setButtonText('Reload from file')
 				.onClick(() => {
-					this.plugin.reloadConfigFile().then(() => this.display());
+					void this.plugin.reloadConfigFile().then(() => this.display());
 				})
 			);
 
@@ -475,7 +475,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 
 		const styles = this.plugin.settings.identifierStyles;
 		const ids = Object.keys(styles).sort();
-		containerEl.createEl('h4', { text: 'Currently loaded identifiers' });
+		new Setting(containerEl).setName('Currently loaded identifiers').setHeading();
 
 		if (ids.length === 0) {
 			containerEl.createEl('p', {
@@ -490,15 +490,17 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 				const row = previewList.createDiv('cc-file-preview-row');
 				row.createEl('span', { text: id, cls: 'cc-file-preview-id' });
 				const sample = row.createEl('span', { text: 'Example', cls: 'cc-file-preview-sample' });
-				if (s.fontColor) sample.style.color = s.fontColor;
-				if (s.backgroundColor) sample.style.backgroundColor = s.backgroundColor;
-				if (s.fontSize) sample.style.fontSize = s.fontSize;
+				sample.setCssStyles({
+					color: s.fontColor || '',
+					backgroundColor: s.backgroundColor || '',
+					fontSize: s.fontSize || '',
+				});
 			}
 		}
 	}
 
 	private renderSettingsSourceUI(containerEl: HTMLElement): void {
-		containerEl.createEl('h3', { text: 'Identifier Styles' });
+		new Setting(containerEl).setName('Identifier Styles').setHeading();
 		containerEl.createEl('p', {
 			text: 'Add an identifier (e.g. "math/hot") or a wildcard (e.g. "math/*"). '
 				+ 'Specific identifiers take precedence over wildcards.',
@@ -508,7 +510,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			this.renderIdentifierBlock(containerEl, id);
 		}
 
-		containerEl.createEl('h3', { text: 'Add Identifier' });
+		new Setting(containerEl).setName('Add Identifier').setHeading();
 		new Setting(containerEl)
 			.setName('Identifier')
 			.setDesc('Format: parent/child  or  parent/* to match all children of a parent')
@@ -535,7 +537,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		const style = this.plugin.settings.identifierStyles[id];
 		if (!style) return;
 		const wrap = containerEl.createDiv('cc-identifier-block');
-		wrap.createEl('h4', { text: id });
+		new Setting(wrap).setName(id).setHeading();
 
 		// Live preview — updated automatically whenever any style property changes
 		const previewWrap = wrap.createEl('div', { cls: 'cc-style-preview' });
@@ -547,9 +549,11 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		const updatePreview = () => {
 			const s = this.plugin.settings.identifierStyles[id];
 			if (!s) return;
-			previewSpan.style.color = s.fontColor || '';
-			previewSpan.style.backgroundColor = s.backgroundColor || '';
-			previewSpan.style.fontSize = s.fontSize || '';
+			previewSpan.setCssStyles({
+				color: s.fontColor || '',
+				backgroundColor: s.backgroundColor || '',
+				fontSize: s.fontSize || '',
+			});
 		};
 		updatePreview();
 
@@ -629,21 +633,15 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 	): void {
 		const setting = new Setting(wrap).setName(name).setDesc(desc);
 
-		const picker = document.createElement('input');
-		picker.type = 'color';
-		picker.style.cssText =
-			'width:36px;height:36px;padding:2px;border:none;border-radius:4px;' +
-			'cursor:pointer;background:transparent;margin-right:8px;flex-shrink:0;';
+		const picker = activeDocument.createEl('input', {
+			cls: 'cc-color-picker',
+			attr: { type: 'color' },
+		});
 
-		const hexInput = document.createElement('input');
-		hexInput.type = 'text';
-		hexInput.maxLength = 7;
-		hexInput.placeholder = '#rrggbb';
-		hexInput.style.cssText =
-			'width:100px;font-family:monospace;font-size:12px;' +
-			'padding:4px 8px;border-radius:4px;' +
-			'border:1px solid var(--background-modifier-border);' +
-			'transition:background-color 0.15s,color 0.15s;';
+		const hexInput = activeDocument.createEl('input', {
+			cls: 'cc-color-hex',
+			attr: { type: 'text', maxlength: '7', placeholder: '#rrggbb' },
+		});
 
 		const current = getValue();
 		picker.value = isValidHex(current) ? current : '#000000';
@@ -658,22 +656,21 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		};
 
 		picker.addEventListener('input', () => {
-			if (isValidHex(picker.value)) sync(picker.value);
+			if (isValidHex(picker.value)) void sync(picker.value);
 		});
 
 		hexInput.addEventListener('input', () => {
-			if (isValidHex(hexInput.value)) sync(hexInput.value);
+			if (isValidHex(hexInput.value)) void sync(hexInput.value);
 		});
 
-		hexInput.addEventListener('change', async () => {
+		hexInput.addEventListener('change', () => {
 			if (hexInput.value === '') {
 				clearColorStyle(hexInput);
-				await onChange('');
+				void onChange('');
 			}
 		});
 
-		setting.controlEl.style.display = 'flex';
-		setting.controlEl.style.alignItems = 'center';
+		setting.controlEl.addClass('cc-color-control');
 		setting.controlEl.appendChild(picker);
 		setting.controlEl.appendChild(hexInput);
 	}

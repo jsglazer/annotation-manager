@@ -10,10 +10,10 @@ export interface Annotation {
 
 // New syntax: {={parent/child}content=}  or  {={parent}content=}
 // [\s\S] keeps multi-line support consistent with Reading View and the editor.
-const PATTERN = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}([\s\S]*?)=\}/g;
+const PATTERN = /\{=\{([^/}\s]+)(?:\/([^}\s]+))?}([\s\S]*?)=}/g;
 
 // Citation marker immediately following an annotation: {=/{key}/=}
-const CITATION_RE = /^\{=\/\{([^/}]+)\/=\}/;
+const CITATION_RE = /^\{=\/\{([^/}]+)\/=}/;
 
 // Returns [from, to) ranges of code spans and fenced code blocks in raw markdown.
 function getCodeRanges(content: string): Array<[number, number]> {

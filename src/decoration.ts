@@ -11,10 +11,10 @@ import AnnotationManagerPlugin from './main';
 
 // New syntax: {={parent/child}content=}  or  {={parent}content=}
 // [\s\S] keeps multi-line support consistent with Reading View and the parser.
-const PATTERN = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}([\s\S]*?)=\}/g;
+const PATTERN = /\{=\{([^/}\s]+)(?:\/([^}\s]+))?}([\s\S]*?)=}/g;
 
 // Citation markers: {=/{key}/=}
-const CITATION_PATTERN = /\{=\/\{([^/}]+)\/=\}/g;
+const CITATION_PATTERN = /\{=\/\{([^/}]+)\/=}/g;
 
 // Hides delimiters in Live Preview
 const HIDE = Decoration.mark({ class: 'cc-hide' });
@@ -57,14 +57,23 @@ function isInCodeRange(relFrom: number, relTo: number, ranges: Array<[number, nu
 	return ranges.some(([rFrom, rTo]) => relFrom < rTo && relTo > rFrom);
 }
 
+// The inline style uses !important so it beats the neutral-baseline rule in
+// styles.css (which is also !important). --cc-fg is published so nested CM6
+// syntax tokens can inherit the annotation color via the .cc-fg child rule.
 function makeColorMark(cls: string, style: IdentifierStyle | null): Decoration {
 	const parts: string[] = [];
-	if (style?.fontColor) parts.push(`color: ${style.fontColor}`);
-	if (style?.backgroundColor) parts.push(`background-color: ${style.backgroundColor}`);
+	const classes = ['cc-annotation-editor', cls];
+	if (style?.fontColor) {
+		parts.push(`color: ${style.fontColor} !important`);
+		parts.push(`--cc-fg: ${style.fontColor}`);
+		classes.push('cc-fg');
+	}
+	if (style?.backgroundColor) parts.push(`background-color: ${style.backgroundColor} !important`);
 	if (style?.fontSize && isValidFontSize(style.fontSize)) parts.push(`font-size: ${style.fontSize.trim()}`);
+	if (parts.length > 0) classes.push('cc-styled');
 
 	const spec: { class: string; attributes?: Record<string, string> } = {
-		class: `cc-annotation-editor ${cls}`,
+		class: classes.join(' '),
 	};
 	if (parts.length > 0) spec.attributes = { style: parts.join('; ') };
 	return Decoration.mark(spec);
@@ -199,7 +208,12 @@ function buildCitationDecorations(view: EditorView, plugin: AnnotationManagerPlu
 	const shouldColor = plugin.citationVisibilityEnabled && !!plugin.settings.citationColor;
 	if (!shouldHide && !shouldColor) return builder.finish();
 
-	const mark = shouldHide ? HIDE : Decoration.mark({ class: 'cc-citation' });
+	const mark = shouldHide
+		? HIDE
+		: Decoration.mark({
+			class: 'cc-citation',
+			attributes: { style: `color: ${plugin.settings.citationColor} !important` },
+		});
 
 	for (const { from, to } of view.visibleRanges) {
 		const text = view.state.doc.sliceString(from, to);

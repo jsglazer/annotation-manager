@@ -90,7 +90,7 @@ export class AnnotationSidebarView extends ItemView {
 
 			// Items container — hidden when collapsed (default)
 			const itemsEl = section.createDiv('cc-sidebar-items');
-			if (!isExpanded) itemsEl.style.display = 'none';
+			itemsEl.toggleClass('cc-collapsed', !isExpanded);
 
 			sectionMeta.push({ key, itemsEl, arrowEl });
 
@@ -99,13 +99,11 @@ export class AnnotationSidebarView extends ItemView {
 				const nowExpanded = !this.expandedSections.has(key);
 				if (nowExpanded) {
 					this.expandedSections.add(key);
-					itemsEl.style.display = '';
-					arrowEl.textContent = '▾';
 				} else {
 					this.expandedSections.delete(key);
-					itemsEl.style.display = 'none';
-					arrowEl.textContent = '▸';
 				}
+				itemsEl.toggleClass('cc-collapsed', !nowExpanded);
+				arrowEl.setText(nowExpanded ? '▾' : '▸');
 			});
 
 			// ── Annotation entries ─────────────────────────────────────────
@@ -124,18 +122,20 @@ export class AnnotationSidebarView extends ItemView {
 					cls: 'cc-sidebar-loc',
 				});
 
-				item.addEventListener('click', async () => {
-					const file = this.app.vault.getAbstractFileByPath(entry.filePath);
-					if (!(file instanceof TFile)) return;
-					const leaf = this.app.workspace.getLeaf(false);
-					await leaf.openFile(file);
-					const view = leaf.view;
-					if (view instanceof MarkdownView) {
-						const editor = view.editor;
-						const pos = editor.offsetToPos(entry.from);
-						editor.setCursor(pos);
-						editor.scrollIntoView({ from: pos, to: pos }, true);
-					}
+				item.addEventListener('click', () => {
+					void (async () => {
+						const file = this.app.vault.getAbstractFileByPath(entry.filePath);
+						if (!(file instanceof TFile)) return;
+						const leaf = this.app.workspace.getLeaf(false);
+						await leaf.openFile(file);
+						const view = leaf.view;
+						if (view instanceof MarkdownView) {
+							const editor = view.editor;
+							const pos = editor.offsetToPos(entry.from);
+							editor.setCursor(pos);
+							editor.scrollIntoView({ from: pos, to: pos }, true);
+						}
+					})();
 				});
 			}
 		}
@@ -144,16 +144,16 @@ export class AnnotationSidebarView extends ItemView {
 		expandAllBtn.addEventListener('click', () => {
 			for (const { key, itemsEl, arrowEl } of sectionMeta) {
 				this.expandedSections.add(key);
-				itemsEl.style.display = '';
-				arrowEl.textContent = '▾';
+				itemsEl.toggleClass('cc-collapsed', false);
+				arrowEl.setText('▾');
 			}
 		});
 
 		collapseAllBtn.addEventListener('click', () => {
 			for (const { key, itemsEl, arrowEl } of sectionMeta) {
 				this.expandedSections.delete(key);
-				itemsEl.style.display = 'none';
-				arrowEl.textContent = '▸';
+				itemsEl.toggleClass('cc-collapsed', true);
+				arrowEl.setText('▸');
 			}
 		});
 	}

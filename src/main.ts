@@ -1,14 +1,13 @@
-import { App, debounce, Editor, FileView, MarkdownView, Menu, Notice, Plugin, setIcon, SuggestModal, TFile, WorkspaceLeaf } from 'obsidian';
+import { App, debounce, Editor, EventRef, FileView, MarkdownView, Menu, MenuItem, Notice, Plugin, setIcon, SuggestModal, TFile, WorkspaceLeaf } from 'obsidian';
 import {
 	AnnotationManagerSettings,
 	AnnotationManagerSettingTab,
 	DEFAULT_SETTINGS,
-	identifierKeyToClass,
+	IdentifierStyle,
 	injectExamples,
 	isValidFontSize,
 	parseConfigTable,
 	renderConfigTable,
-	resolvedClass,
 	resolvedStyle,
 } from './settings';
 import { parseAnnotations, Annotation } from './parser';
@@ -17,7 +16,49 @@ import { createCommentViewPlugin, createCitationViewPlugin } from './decoration'
 import { AnnotationSidebarView, SIDEBAR_VIEW_TYPE } from './sidebar';
 import { parseBibFile, BibEntry } from './bibtex';
 
-const STYLE_EL_ID = 'annotation-manager-styles';
+// CSS class toggled on <body> to hide .bib files in the file explorer.
+const HIDE_BIB_CLASS = 'cc-hide-bib-files';
+
+// ── Typed views over Obsidian's undocumented internal APIs ────────────────
+// These cast targets replace `any` so the rest of the code stays type-checked.
+
+interface MenuItemWithSubmenu extends MenuItem {
+	setSubmenu(): Menu;
+}
+
+interface RibbonContainer {
+	containerEl?: HTMLElement;
+}
+
+interface WorkspaceInternals {
+	rightRibbon?: RibbonContainer;
+	rightSplit?: RibbonContainer;
+}
+
+interface DataviewPage {
+	fields: Map<string, unknown>;
+}
+
+interface DataviewApi {
+	index?: { pages?: Map<string, DataviewPage> };
+}
+
+interface DataviewPlugin {
+	api?: DataviewApi;
+}
+
+interface AppInternals {
+	plugins?: { plugins?: Record<string, DataviewPlugin | undefined> };
+	saveLocalStorage?: () => void;
+}
+
+interface VaultInternals {
+	setConfig?: (key: string, value: unknown) => void;
+}
+
+interface MetadataCacheInternals {
+	on(name: 'dataview:metadata-change', callback: (type: string, file: TFile) => void): EventRef;
+}
 
 export default class AnnotationManagerPlugin extends Plugin {
 	settings: AnnotationManagerSettings;
@@ -55,7 +96,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 		// Left ribbon icon
 		this.addRibbonIcon('message-square', 'Annotation Manager: show annotations', () => {
-			this.toggleSidebar();
+			void this.toggleSidebar();
 		});
 
 		this.addCommand({
@@ -179,12 +220,14 @@ export default class AnnotationManagerPlugin extends Plugin {
 					specificBibFile = style?.bibFile || null;
 				}
 
-				new BibFileSuggestModal(this.app, bibFiles, specificBibFile, async (selectedFile) => {
-					const content = await this.app.vault.cachedRead(selectedFile);
-					const entries = parseBibFile(content).sort((a, b) => a.key.localeCompare(b.key));
-					new CitationSuggestModal(this.app, entries, (key) => {
-						editor.replaceRange(`{=/{${key}/=}`, insertPos);
-					}).open();
+				new BibFileSuggestModal(this.app, bibFiles, specificBibFile, (selectedFile) => {
+					void (async () => {
+						const content = await this.app.vault.cachedRead(selectedFile);
+						const entries = parseBibFile(content).sort((a, b) => a.key.localeCompare(b.key));
+						new CitationSuggestModal(this.app, entries, (key) => {
+							editor.replaceRange(`{=/{${key}/=}`, insertPos);
+						}).open();
+					})();
 				}).open();
 			},
 		});
@@ -201,9 +244,9 @@ export default class AnnotationManagerPlugin extends Plugin {
 				menu.addItem(item => {
 					item.setTitle('Annot Format');
 					item.setIcon('tag');
-					const submenu: Menu = (item as any).setSubmenu();
+					const submenu = (item as MenuItemWithSubmenu).setSubmenu();
 					for (const id of ids) {
-						submenu.addItem((sub: any) => {
+						submenu.addItem((sub) => {
 							sub.setTitle(id);
 							sub.onClick(() => {
 								this.lastUsedIdentifier = id;
@@ -271,7 +314,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 	}
 
 	onunload() {
-		document.getElementById(STYLE_EL_ID)?.remove();
+		activeDocument.body.removeClass(HIDE_BIB_CLASS);
 	}
 
 	async loadSettings() {
@@ -305,29 +348,31 @@ export default class AnnotationManagerPlugin extends Plugin {
 	private async toggleSidebar(): Promise<void> {
 		const existing = this.app.workspace.getLeavesOfType(SIDEBAR_VIEW_TYPE);
 		if (existing.length && existing[0]) {
-			this.app.workspace.revealLeaf(existing[0]);
+			await this.app.workspace.revealLeaf(existing[0]);
 			return;
 		}
 		const leaf = this.app.workspace.getRightLeaf(false);
 		if (leaf) {
 			await leaf.setViewState({ type: SIDEBAR_VIEW_TYPE });
-			this.app.workspace.revealLeaf(leaf);
+			await this.app.workspace.revealLeaf(leaf);
 		}
 	}
 
 	// Inject a toggle button into the right sidebar.
 	// Tries three approaches in order and uses the first that succeeds.
 	private addRightSidebarButton(): void {
+		const workspaceInternals = this.app.workspace as unknown as WorkspaceInternals;
+
 		// Approach 1: Obsidian's rightRibbon internal API
 		try {
-			const rightRibbon = (this.app.workspace as any).rightRibbon;
+			const rightRibbon = workspaceInternals.rightRibbon;
 			if (rightRibbon?.containerEl) {
-				const btn = (rightRibbon.containerEl as HTMLElement).createEl('div', {
+				const btn = rightRibbon.containerEl.createEl('div', {
 					cls: 'side-dock-ribbon-action',
 					attr: { 'aria-label': 'Annotation Manager: show annotations' },
 				});
 				setIcon(btn, 'message-square');
-				btn.addEventListener('click', () => this.toggleSidebar());
+				btn.addEventListener('click', () => { void this.toggleSidebar(); });
 				this.register(() => btn.remove());
 				return;
 			}
@@ -335,14 +380,14 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 		// Approach 2: querySelector for the right ribbon DOM element
 		try {
-			const ribbonEl = document.querySelector('.workspace-ribbon.mod-right') as HTMLElement | null;
+			const ribbonEl = activeDocument.querySelector<HTMLElement>('.workspace-ribbon.mod-right');
 			if (ribbonEl) {
 				const btn = ribbonEl.createEl('div', {
 					cls: 'side-dock-ribbon-action',
 					attr: { 'aria-label': 'Annotation Manager: show annotations' },
 				});
 				setIcon(btn, 'message-square');
-				btn.addEventListener('click', () => this.toggleSidebar());
+				btn.addEventListener('click', () => { void this.toggleSidebar(); });
 				this.register(() => btn.remove());
 				return;
 			}
@@ -350,71 +395,25 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 		// Approach 3: append to the right split container
 		try {
-			const rightSplit = (this.app.workspace as any).rightSplit;
-			const containerEl = rightSplit?.containerEl as HTMLElement | undefined;
+			const containerEl = workspaceInternals.rightSplit?.containerEl;
 			if (containerEl) {
 				const btn = containerEl.createEl('div', {
 					cls: 'cc-right-panel-btn',
 					attr: { 'aria-label': 'Annotation Manager: show annotations', title: 'Annotation Manager' },
 				});
 				setIcon(btn, 'message-square');
-				btn.addEventListener('click', () => this.toggleSidebar());
+				btn.addEventListener('click', () => { void this.toggleSidebar(); });
 				this.register(() => btn.remove());
 			}
 		} catch (e) { console.warn('Annotation Manager: right split button injection failed', e); }
 	}
 
+	// Per-identifier colors are applied as inline styles (editor decorations in
+	// decoration.ts, Reading View spans in processReadingView). The only global
+	// state left is the .bib-hiding toggle, expressed as a <body> class consumed
+	// by styles.css.
 	updateStyleSheet() {
-		let el = document.getElementById(STYLE_EL_ID) as HTMLStyleElement | null;
-		if (!el) {
-			el = document.createElement('style');
-			el.id = STYLE_EL_ID;
-			document.head.appendChild(el);
-		}
-
-		const rules: string[] = [];
-
-		// Hide .bib files from the file explorer when the setting is off
-		if (!this.settings.showBibFilesInBrowser) {
-			rules.push(`.nav-file:has(.nav-file-title[data-path$=".bib"]) { display: none !important; }`);
-		}
-
-		// Citation color
-		if (this.settings.citationColor) {
-			rules.push(`.cc-citation { color: ${this.settings.citationColor} !important; }`);
-			rules.push(`.cm-editor .cm-content .cm-line .cc-citation { color: ${this.settings.citationColor} !important; }`);
-		}
-
-		// Neutral baseline (injected after Obsidian's CSS, wins equal-specificity !important conflicts
-		// by source order). Prevents CM6 link/bracket coloring on annotation spans.
-		rules.push(`.cm-editor .cm-content .cm-line .cc-annotation-editor { color: var(--text-normal) !important; }`);
-		rules.push(`.cm-editor .cm-content .cm-line .cc-annotation-editor * { color: var(--text-normal) !important; background-color: transparent !important; }`);
-
-		for (const [key, style] of Object.entries(this.settings.identifierStyles)) {
-			const cls = identifierKeyToClass(key);
-			const decls: string[] = [];
-			if (style.fontColor) decls.push(`color: ${style.fontColor} !important`);
-			if (style.backgroundColor) decls.push(`background-color: ${style.backgroundColor} !important`);
-			// Validate: fontSize is free text and goes into the global stylesheet —
-			// an unvalidated value could inject arbitrary CSS rules.
-			if (isValidFontSize(style.fontSize)) decls.push(`font-size: ${style.fontSize.trim()}`);
-			if (decls.length === 0) continue;
-
-			// Reading View
-			rules.push(`.${cls} { ${decls.join('; ')} }`);
-
-			// Editor: same 4-class specificity as neutral baseline; comes later → wins by source order
-			rules.push(`.cm-editor .cm-content .cm-line .${cls} { ${decls.join('; ')} }`);
-
-			// Editor child spans (CM6 syntax tokens) — literal color beats Obsidian's inherit rules.
-			// Excludes .cm-inline-code so inline code inside annotations keeps its own background.
-			const childDecls: string[] = [];
-			if (style.fontColor) childDecls.push(`color: ${style.fontColor} !important`);
-			childDecls.push(`background-color: transparent !important`);
-			rules.push(`.cm-editor .cm-content .cm-line .${cls} *:not(.cm-inline-code) { ${childDecls.join('; ')} }`);
-		}
-
-		el.textContent = rules.join('\n');
+		activeDocument.body.toggleClass(HIDE_BIB_CLASS, !this.settings.showBibFilesInBrowser);
 	}
 
 	// Called by settings and toggle commands to rebuild styles and refresh all views.
@@ -450,9 +449,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 	private processReadingView(el: HTMLElement) {
 		if (!el.textContent?.includes('{=')) return;
 
-		const annotationPattern = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}([\s\S]*?)=\}/g;
-		const citationPattern = /\{=\/\{([^/}]+)\/=\}/g;
-		const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+		const walker = activeDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
 		const toReplace: Text[] = [];
 		let node: Node | null;
 
@@ -467,36 +464,93 @@ export default class AnnotationManagerPlugin extends Plugin {
 			if (!parent) continue;
 			if (parent.tagName === 'CODE' || parent.tagName === 'PRE') continue;
 
-			// Escape first: nodeValue is plain text, and assigning the rewritten
-			// string through innerHTML below would otherwise re-parse any markup
-			// it contains (XSS via note content).
-			const escaped = escapeHtml(textNode.nodeValue ?? '');
-			let html = escaped;
-			if (this.syntaxHidingEnabled) {
-				html = html.replace(
-					annotationPattern,
-					(_match, p: string, c: string | undefined, content: string) => {
-						const cls = this.textFormattingEnabled
-							? resolvedClass(p, c ?? '', this.settings.identifierStyles)
-							: null;
-						const className = cls ? `cc-annotation ${cls}` : 'cc-annotation';
-						return `<span class="${className}">${content.trim()}</span>`;
-					},
-				);
-			}
-			if (!this.citationVisibilityEnabled) {
-				html = html.replace(citationPattern, () => `<span class="cc-hide"></span>`);
-			} else if (this.settings.citationColor) {
-				html = html.replace(citationPattern, (match) =>
-					`<span class="cc-citation">${match}</span>`
-				);
-			}
-			if (html === escaped) continue;
-
-			const span = document.createElement('span');
-			span.innerHTML = html;
-			parent.replaceChild(span, textNode);
+			// Build replacement DOM nodes directly from the raw text. Text content
+			// goes through createTextNode/Obsidian's typed builders, so note content
+			// can never be re-parsed as markup (no innerHTML, no XSS surface).
+			const frag = this.buildReadingFragment(textNode.nodeValue ?? '');
+			if (frag) parent.replaceChild(frag, textNode);
 		}
+	}
+
+	// Annotation pattern: {={parent/child}content=}  or  {={parent}content=}
+	private static readonly READING_ANNOTATION = /\{=\{([^/}\s]+)(?:\/([^}\s]+))?}([\s\S]*?)=}/g;
+	private static readonly READING_CITATION = /\{=\/\{([^/}]+)\/=}/g;
+
+	// Returns a fragment of mixed text + styled spans, or null when nothing in the
+	// text would be transformed (so the original text node is left untouched).
+	private buildReadingFragment(value: string): DocumentFragment | null {
+		const frag = activeDocument.createDocumentFragment();
+		let changed = false;
+
+		if (this.syntaxHidingEnabled) {
+			const re = new RegExp(AnnotationManagerPlugin.READING_ANNOTATION.source, 'g');
+			let lastIndex = 0;
+			let m: RegExpExecArray | null;
+			while ((m = re.exec(value)) !== null) {
+				if (this.appendCitations(frag, value.slice(lastIndex, m.index))) changed = true;
+
+				const span = createSpan({ cls: 'cc-annotation' });
+				if (this.textFormattingEnabled) {
+					const style = resolvedStyle(m[1] ?? '', m[2] ?? '', this.settings.identifierStyles);
+					if (style) this.applyInlineStyle(span, style);
+				}
+				this.appendCitations(span, (m[3] ?? '').trim());
+				frag.appendChild(span);
+
+				lastIndex = m.index + m[0].length;
+				changed = true;
+			}
+			if (this.appendCitations(frag, value.slice(lastIndex))) changed = true;
+		} else {
+			// Brackets visible — leave annotations raw, but citations still apply.
+			if (this.appendCitations(frag, value)) changed = true;
+		}
+
+		return changed ? frag : null;
+	}
+
+	// Appends text to parent, wrapping/hiding any {=/{key}/=} citation markers.
+	// Returns true if any citation was transformed.
+	private appendCitations(parent: Node, text: string): boolean {
+		if (!text) return false;
+
+		const hide = !this.citationVisibilityEnabled;
+		const color = this.citationVisibilityEnabled && !!this.settings.citationColor;
+		if (!hide && !color) {
+			parent.appendChild(activeDocument.createTextNode(text));
+			return false;
+		}
+
+		const re = new RegExp(AnnotationManagerPlugin.READING_CITATION.source, 'g');
+		let lastIndex = 0;
+		let changed = false;
+		let m: RegExpExecArray | null;
+		while ((m = re.exec(text)) !== null) {
+			if (m.index > lastIndex) {
+				parent.appendChild(activeDocument.createTextNode(text.slice(lastIndex, m.index)));
+			}
+			if (hide) {
+				parent.appendChild(createSpan({ cls: 'cc-hide' }));
+			} else {
+				const span = createSpan({ cls: 'cc-citation', text: m[0] });
+				span.setCssStyles({ color: this.settings.citationColor });
+				parent.appendChild(span);
+			}
+			lastIndex = m.index + m[0].length;
+			changed = true;
+		}
+		if (lastIndex < text.length) {
+			parent.appendChild(activeDocument.createTextNode(text.slice(lastIndex)));
+		}
+		return changed;
+	}
+
+	private applyInlineStyle(el: HTMLElement, style: IdentifierStyle): void {
+		const css: Partial<CSSStyleDeclaration> = {};
+		if (style.fontColor) css.color = style.fontColor;
+		if (style.backgroundColor) css.backgroundColor = style.backgroundColor;
+		if (isValidFontSize(style.fontSize)) css.fontSize = style.fontSize.trim();
+		el.setCssStyles(css);
 	}
 
 	private async indexAllFiles() {
@@ -577,8 +631,8 @@ export default class AnnotationManagerPlugin extends Plugin {
 			try {
 				// Enable Obsidian's "Show all file types" so .bib files appear in the file explorer.
 				// This modifies a global Obsidian setting — noted in the README.
-				(this.app.vault as any).setConfig?.('showUnsupportedFiles', true);
-				(this.app as any).saveLocalStorage?.();
+				(this.app.vault as unknown as VaultInternals).setConfig?.('showUnsupportedFiles', true);
+				(this.app as unknown as AppInternals).saveLocalStorage?.();
 			} catch (e) { console.warn('Annotation Manager: enabling "Show all file types" failed', e); }
 		}
 		// CSS hiding for showBibFilesInBrowser=false is handled in updateStyleSheet
@@ -611,13 +665,13 @@ export default class AnnotationManagerPlugin extends Plugin {
 	// ── Dataview integration ─────────────────────────────────────────────────
 
 	private setupDataviewIntegration() {
-		const dv = (this.app as any).plugins?.plugins?.['dataview'];
+		const dv = (this.app as unknown as AppInternals).plugins?.plugins?.['dataview'];
 		if (!dv) return;
 
 		this.registerEvent(
-			(this.app.metadataCache as any).on(
+			(this.app.metadataCache as unknown as MetadataCacheInternals).on(
 				'dataview:metadata-change',
-				(type: string, file: TFile) => {
+				(type, file) => {
 					if (type === 'update' && file instanceof TFile) {
 						this.injectDataviewMetadata(file);
 					}
@@ -631,8 +685,8 @@ export default class AnnotationManagerPlugin extends Plugin {
 	}
 
 	injectDataviewMetadata(file: TFile) {
-		const dv = (this.app as any).plugins?.plugins?.['dataview'];
-		const pages: Map<string, any> | undefined = dv?.api?.index?.pages;
+		const dv = (this.app as unknown as AppInternals).plugins?.plugins?.['dataview'];
+		const pages = dv?.api?.index?.pages;
 		if (!pages) return;
 
 		const page = pages.get(file.path);
@@ -674,14 +728,6 @@ class BibFileView extends FileView {
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-function escapeHtml(s: string): string {
-	return s
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;');
-}
-
 function getAnnotationIdentifierAtCursor(editor: Editor): string | null {
 	const cursor = editor.getCursor();
 	const line = editor.getLine(cursor.line);
@@ -690,7 +736,7 @@ function getAnnotationIdentifierAtCursor(editor: Editor): string | null {
 	if (!textBeforeCursor.endsWith('=}')) return null;
 
 	// Find the annotation whose closing =} lands exactly at the cursor
-	const pattern = /\{=\{([^/\}\s]+)(?:\/([^\}\s]+))?\}.*?=\}/g;
+	const pattern = /\{=\{([^/}\s]+)(?:\/([^}\s]+))?}.*?=}/g;
 	let match: RegExpExecArray | null;
 	while ((match = pattern.exec(textBeforeCursor)) !== null) {
 		if (match.index + match[0].length === textBeforeCursor.length) {
@@ -754,7 +800,7 @@ class BibFileSuggestModal extends SuggestModal<BibFileItem> {
 	onChooseSuggestion(item: BibFileItem): void {
 		if (item.kind === 'sep') {
 			// Separator accidentally selected — reopen the modal
-			setTimeout(() => new BibFileSuggestModal(
+			window.setTimeout(() => new BibFileSuggestModal(
 				this.app, this.bibFiles, this.specificBibFileName, this.onChoose
 			).open(), 50);
 			return;
