@@ -12,38 +12,38 @@
 
 /* ── Editor annotation coloring ──────────────────────────────────────────────
    Per-identifier colors are applied inline by the editor decorations
-   (decoration.ts). These static rules provide the neutral baseline and let
+   (decoration.ts). These static rules provide a neutral baseline and let
    nested CM6 syntax tokens inherit the annotation color.
 
-   NOTE: the `!important` here is intentional and required — Obsidian's own
-   editor token rules (link/bracket coloring) are themselves `!important`, so
-   they can only be overridden by an equal-importance rule that wins on source
-   order (plugin CSS loads after core). Increasing specificity alone cannot beat
-   a host `!important` rule, so the obsidianmd/no-important warnings on these
-   lines are knowingly accepted.
-
-   Neutral baseline: prevents CM6 link/bracket coloring on annotation spans.
-   Inline `color: … !important` on a styled span overrides the parent rule;
-   the child rules below override the universal child rule by specificity. */
+   No !important is needed. Obsidian's editor token color rules (.cm-link,
+   .cm-strong, …) are not !important — verified against app.css; its only
+   color/background !important rules are on the gutter, PDF popups, the line
+   flash, and hidden task-formatting tokens, none of which touch annotation
+   content. These selectors are deliberately high specificity (4–6 classes) so
+   they win the cascade:
+     - inline decoration styles (highest precedence) override the parent
+       baseline below for styled annotations;
+     - the .cc-fg child rule (6 classes) overrides the universal child
+       baseline (4 classes). */
 .cm-editor .cm-content .cm-line .cc-annotation-editor {
-	color: var(--text-normal) !important;
+	color: var(--text-normal);
 }
 
 .cm-editor .cm-content .cm-line .cc-annotation-editor * {
-	color: var(--text-normal) !important;
-	background-color: transparent !important;
+	color: var(--text-normal);
+	background-color: transparent;
 }
 
 /* Styled annotations: keep child token backgrounds transparent. Excludes
    .cm-inline-code so inline code inside annotations keeps its own background. */
 .cm-editor .cm-content .cm-line .cc-annotation-editor.cc-styled *:not(.cm-inline-code) {
-	background-color: transparent !important;
+	background-color: transparent;
 }
 
 /* Annotations with a font color: child tokens inherit it via the --cc-fg
    custom property published on the parent span. */
 .cm-editor .cm-content .cm-line .cc-annotation-editor.cc-fg *:not(.cm-inline-code) {
-	color: var(--cc-fg) !important;
+	color: var(--cc-fg);
 }
 
 /* Hide .bib files in the file explorer when the setting is off. Targets the

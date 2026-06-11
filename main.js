@@ -606,11 +606,11 @@ function makeColorMark(cls, style) {
   const parts = [];
   const classes = ["cc-annotation-editor", cls];
   if (style == null ? void 0 : style.fontColor) {
-    parts.push(`color: ${style.fontColor} !important`);
+    parts.push(`color: ${style.fontColor}`);
     parts.push(`--cc-fg: ${style.fontColor}`);
     classes.push("cc-fg");
   }
-  if (style == null ? void 0 : style.backgroundColor) parts.push(`background-color: ${style.backgroundColor} !important`);
+  if (style == null ? void 0 : style.backgroundColor) parts.push(`background-color: ${style.backgroundColor}`);
   if ((style == null ? void 0 : style.fontSize) && isValidFontSize(style.fontSize)) parts.push(`font-size: ${style.fontSize.trim()}`);
   if (parts.length > 0) classes.push("cc-styled");
   const spec = {
@@ -707,7 +707,7 @@ function buildCitationDecorations(view, plugin) {
   if (!shouldHide && !shouldColor) return builder.finish();
   const mark = shouldHide ? HIDE : import_view.Decoration.mark({
     class: "cc-citation",
-    attributes: { style: `color: ${plugin.settings.citationColor} !important` }
+    attributes: { style: `color: ${plugin.settings.citationColor}` }
   });
   for (const { from, to } of view.visibleRanges) {
     const text = view.state.doc.sliceString(from, to);

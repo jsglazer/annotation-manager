@@ -57,18 +57,19 @@ function isInCodeRange(relFrom: number, relTo: number, ranges: Array<[number, nu
 	return ranges.some(([rFrom, rTo]) => relFrom < rTo && relTo > rFrom);
 }
 
-// The inline style uses !important so it beats the neutral-baseline rule in
-// styles.css (which is also !important). --cc-fg is published so nested CM6
-// syntax tokens can inherit the annotation color via the .cc-fg child rule.
+// Inline styles already win the cascade (inline beats any non-!important
+// stylesheet rule, and Obsidian's editor token rules are not !important).
+// --cc-fg is published so nested CM6 syntax tokens can inherit the annotation
+// color via the .cc-fg child rule in styles.css.
 function makeColorMark(cls: string, style: IdentifierStyle | null): Decoration {
 	const parts: string[] = [];
 	const classes = ['cc-annotation-editor', cls];
 	if (style?.fontColor) {
-		parts.push(`color: ${style.fontColor} !important`);
+		parts.push(`color: ${style.fontColor}`);
 		parts.push(`--cc-fg: ${style.fontColor}`);
 		classes.push('cc-fg');
 	}
-	if (style?.backgroundColor) parts.push(`background-color: ${style.backgroundColor} !important`);
+	if (style?.backgroundColor) parts.push(`background-color: ${style.backgroundColor}`);
 	if (style?.fontSize && isValidFontSize(style.fontSize)) parts.push(`font-size: ${style.fontSize.trim()}`);
 	if (parts.length > 0) classes.push('cc-styled');
 
@@ -212,7 +213,7 @@ function buildCitationDecorations(view: EditorView, plugin: AnnotationManagerPlu
 		? HIDE
 		: Decoration.mark({
 			class: 'cc-citation',
-			attributes: { style: `color: ${plugin.settings.citationColor} !important` },
+			attributes: { style: `color: ${plugin.settings.citationColor}` },
 		});
 
 	for (const { from, to } of view.visibleRanges) {
