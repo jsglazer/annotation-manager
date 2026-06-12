@@ -158,17 +158,21 @@ body.cc-hide-bib-files .nav-file-title[data-path$='.bib'] {
 	background-color: var(--background-modifier-hover);
 }
 
-.cc-sidebar-text {
-	font-size: 0.88em;
+.cc-sidebar-filename {
+	font-size: 0.8em;
 	color: var(--text-normal);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
 
-.cc-sidebar-loc {
+.cc-sidebar-text {
 	font-size: 0.72em;
-	color: var(--text-faint);
+	color: var(--text-muted);
+	padding-left: 12px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 /* ── Settings info panel ─────────────────────────────────────────────────── */
@@ -339,6 +343,20 @@ body.cc-hide-bib-files .nav-file-title[data-path$='.bib'] {
 	transition:
 		background-color 0.15s,
 		color 0.15s;
+}
+
+/* ── Config-table inline color picker ───────────────────────────────────── */
+
+.cc-config-color-picker {
+	width: 20px;
+	height: 20px;
+	padding: 1px;
+	border: none;
+	border-radius: 3px;
+	cursor: pointer;
+	background: transparent;
+	margin-right: 4px;
+	vertical-align: middle;
 }
 
 /* ── Bib file view hint ──────────────────────────────────────────────────── */

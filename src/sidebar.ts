@@ -120,13 +120,16 @@ export class AnnotationSidebarView extends ItemView {
 				const item = itemsEl.createDiv('cc-sidebar-item');
 				const fileName = entry.filePath.split('/').pop()?.replace(/\.md$/, '') ?? entry.filePath;
 
+				item.createEl('span', { text: fileName, cls: 'cc-sidebar-filename' });
+
+				const words = entry.text.split(/\s+/).filter(Boolean);
+				const excerpt =
+					words.length === 0
+						? '(empty)'
+						: words.slice(0, 3).join(' ') + (words.length > 3 ? '...' : '');
 				item.createEl('span', {
-					text: entry.text.length > 60 ? entry.text.slice(0, 60) + '…' : entry.text || '(empty)',
+					text: `${excerpt}(${entry.line})`,
 					cls: 'cc-sidebar-text',
-				});
-				item.createEl('span', {
-					text: `${fileName} : ${entry.line}`,
-					cls: 'cc-sidebar-loc',
 				});
 
 				item.addEventListener('click', () => {
@@ -135,12 +138,14 @@ export class AnnotationSidebarView extends ItemView {
 						if (!(file instanceof TFile)) return;
 						const leaf = this.app.workspace.getLeaf(false);
 						await leaf.openFile(file);
+						// Give the editor one tick to settle before repositioning
+						await new Promise<void>((r) => window.setTimeout(r, 0));
 						const view = leaf.view;
 						if (view instanceof MarkdownView) {
-							const editor = view.editor;
-							const pos = editor.offsetToPos(entry.from);
-							editor.setCursor(pos);
-							editor.scrollIntoView({ from: pos, to: pos }, true);
+							const line = Math.max(0, entry.line - 1);
+							const pos = { line, ch: 0 };
+							view.editor.setCursor(pos);
+							view.editor.scrollIntoView({ from: pos, to: pos }, true);
 						}
 					})();
 				});

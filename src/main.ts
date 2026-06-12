@@ -108,7 +108,15 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 		this.registerEditorExtension(createCommentViewPlugin(this));
 		this.registerEditorExtension(createCitationViewPlugin(this));
-		this.registerMarkdownPostProcessor((el) => this.processReadingView(el));
+		this.registerMarkdownPostProcessor((el, ctx) => {
+			this.processReadingView(el);
+			if (
+				this.settings.configSource === 'file' &&
+				ctx.sourcePath === normalizePath(this.settings.configFilePath)
+			) {
+				this.processConfigTable(el, ctx.sourcePath);
+			}
+		});
 
 		this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new AnnotationSidebarView(leaf, this));
 
@@ -585,6 +593,132 @@ export default class AnnotationManagerPlugin extends Plugin {
 			parent.appendChild(activeDocument.createTextNode(text.slice(lastIndex)));
 		}
 		return changed;
+	}
+
+	// ── Config-table color picker (reading view of AMConfig.md) ─────────────
+
+	private processConfigTable(el: HTMLElement, sourcePath: string): void {
+		const tables = el.querySelectorAll<HTMLTableElement>('table');
+		for (const table of Array.from(tables)) {
+			const ths = Array.from(table.querySelectorAll<HTMLTableCellElement>('th'));
+			const headers = ths.map((th) => th.textContent?.trim() ?? '');
+			const fontColorIdx = headers.findIndex((h) => h === 'Font Color');
+			const bgColorIdx = headers.findIndex((h) => h === 'Background Color');
+			if (fontColorIdx === -1 && bgColorIdx === -1) continue;
+
+			const rows = Array.from(table.querySelectorAll<HTMLTableRowElement>('tbody tr'));
+			for (const row of rows) {
+				const cells = Array.from(row.querySelectorAll<HTMLTableCellElement>('td'));
+				const identifier = cells[0]?.textContent?.trim() ?? '';
+				if (!identifier || identifier.startsWith('(')) continue;
+
+				if (fontColorIdx !== -1) {
+					const cell = cells[fontColorIdx];
+					if (cell) this.injectConfigColorPicker(cell, identifier, 'fontColor', sourcePath);
+				}
+				if (bgColorIdx !== -1) {
+					const cell = cells[bgColorIdx];
+					if (cell) this.injectConfigColorPicker(cell, identifier, 'bgColor', sourcePath);
+				}
+			}
+		}
+	}
+
+	private injectConfigColorPicker(
+		cell: HTMLTableCellElement,
+		identifier: string,
+		field: 'fontColor' | 'bgColor',
+		sourcePath: string,
+	): void {
+		const rawHex = cell.textContent?.trim() ?? '';
+		const fullHex = rawHex ? (rawHex.startsWith('#') ? rawHex : '#' + rawHex) : '#000000';
+		const isValidColorHex = /^#[0-9a-fA-F]{6}$/.test(fullHex);
+
+		cell.empty();
+		const picker = cell.createEl('input', {
+			cls: 'cc-config-color-picker',
+			attr: { type: 'color' },
+		});
+		picker.value = isValidColorHex ? fullHex : '#000000';
+		cell.appendText(rawHex);
+
+		picker.addEventListener('change', () => {
+			void (async () => {
+				const newHex = picker.value;
+				const file = this.app.vault.getAbstractFileByPath(sourcePath);
+				if (!(file instanceof TFile)) return;
+
+				const style = this.settings.identifierStyles[identifier];
+				if (style) {
+					if (field === 'fontColor') style.fontColor = newHex;
+					else style.backgroundColor = newHex;
+					await this.saveSettings();
+					this.bumpStyleVersion();
+				}
+
+				this._writingConfigFile = true;
+				try {
+					await this.app.vault.process(file, (content) =>
+						this.updateConfigTableColor(content, identifier, field, newHex),
+					);
+				} finally {
+					this._writingConfigFile = false;
+				}
+			})();
+		});
+	}
+
+	private updateConfigTableColor(
+		content: string,
+		identifier: string,
+		field: 'fontColor' | 'bgColor',
+		newHex: string,
+	): string {
+		const hexWithoutHash = newHex.startsWith('#') ? newHex.slice(1) : newHex;
+		const lines = content.split('\n');
+		let headerSeen = false;
+		let separatorSeen = false;
+		let fontColorColIdx = -1;
+		let bgColorColIdx = -1;
+
+		return lines
+			.map((line) => {
+				const trimmed = line.trim();
+				if (!trimmed.startsWith('|')) return line;
+
+				if (/^\|[-|:\s]+\|?$/.test(trimmed)) {
+					if (headerSeen) separatorSeen = true;
+					return line;
+				}
+
+				if (!headerSeen) {
+					headerSeen = true;
+					const cols = trimmed
+						.replace(/^\|/, '')
+						.replace(/\|$/, '')
+						.split('|')
+						.map((c) => c.trim());
+					fontColorColIdx = cols.findIndex((c) => c === 'Font Color');
+					bgColorColIdx = cols.findIndex((c) => c === 'Background Color');
+					return line;
+				}
+
+				if (!separatorSeen) return line;
+
+				const cols = trimmed
+					.replace(/^\|/, '')
+					.replace(/\|$/, '')
+					.split('|')
+					.map((c) => c.trim());
+
+				if (cols[0] !== identifier) return line;
+
+				const targetIdx = field === 'fontColor' ? fontColorColIdx : bgColorColIdx;
+				if (targetIdx === -1 || targetIdx >= cols.length) return line;
+				cols[targetIdx] = hexWithoutHash;
+				return '| ' + cols.join(' | ') + ' |';
+			})
+			.join('\n');
 	}
 
 	private applyInlineStyle(el: HTMLElement, style: IdentifierStyle): void {
