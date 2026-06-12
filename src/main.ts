@@ -658,9 +658,10 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 				this._writingConfigFile = true;
 				try {
-					await this.app.vault.process(file, (content) =>
-						this.updateConfigTableColor(content, identifier, field, newHex),
-					);
+					await this.app.vault.process(file, (content) => {
+						const withColor = this.updateConfigTableColor(content, identifier, field, newHex);
+						return injectExamples(withColor, this.settings.identifierStyles);
+					});
 				} finally {
 					this._writingConfigFile = false;
 				}
@@ -791,12 +792,15 @@ export default class AnnotationManagerPlugin extends Plugin {
 		await this.saveSettings();
 		this.bumpStyleVersion();
 
-		// Update Example column in-place; write back only if something changed
+		// Update Example column in-place; write back only if something changed.
+		// vault.process re-reads the file so concurrent edits are not lost.
 		const updated = injectExamples(content, this.settings.identifierStyles);
 		if (updated !== content) {
 			this._writingConfigFile = true;
 			try {
-				await this.app.vault.process(file, () => updated);
+				await this.app.vault.process(file, (cur) =>
+					injectExamples(cur, this.settings.identifierStyles),
+				);
 			} finally {
 				this._writingConfigFile = false;
 			}

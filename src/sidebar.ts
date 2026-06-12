@@ -136,16 +136,32 @@ export class AnnotationSidebarView extends ItemView {
 					void (async () => {
 						const file = this.app.vault.getAbstractFileByPath(entry.filePath);
 						if (!(file instanceof TFile)) return;
-						const leaf = this.app.workspace.getLeaf(false);
-						await leaf.openFile(file);
-						// Give the editor one tick to settle before repositioning
-						await new Promise<void>((r) => window.setTimeout(r, 0));
+
+						// Prefer an already-open leaf for this file to avoid a full reload
+						const existing = this.app.workspace
+							.getLeavesOfType('markdown')
+							.find((l) => l.view instanceof MarkdownView && l.view.file?.path === entry.filePath);
+
+						let leaf: WorkspaceLeaf;
+						if (existing) {
+							leaf = existing;
+							await this.app.workspace.revealLeaf(leaf);
+						} else {
+							leaf = this.app.workspace.getLeaf(false);
+							await leaf.openFile(file);
+						}
+
+						// Give the editor 50 ms to settle before repositioning
+						await new Promise<void>((r) => window.setTimeout(r, 50));
+
 						const view = leaf.view;
 						if (view instanceof MarkdownView) {
 							const line = Math.max(0, entry.line - 1);
 							const pos = { line, ch: 0 };
 							view.editor.setCursor(pos);
 							view.editor.scrollIntoView({ from: pos, to: pos }, true);
+							// Also covers reading/preview mode
+							view.setEphemeralState({ line });
 						}
 					})();
 				});
