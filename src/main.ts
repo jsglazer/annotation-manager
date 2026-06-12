@@ -77,7 +77,7 @@ interface MetadataCacheInternals {
 }
 
 export default class AnnotationManagerPlugin extends Plugin {
-	settings: AnnotationManagerSettings;
+	settings!: AnnotationManagerSettings;
 	styleVersion = 0;
 	// Four independent display toggles (all ON by default)
 	syntaxHidingEnabled = true; // hides {={id} and =} delimiters in LP / Reading View
