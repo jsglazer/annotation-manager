@@ -1,4 +1,3 @@
-
 # Annotation Manager
 
 [![GitHub release](https://img.shields.io/github/v/release/jsglazer/annotation-manager?logo=github)](https://github.com/jsglazer/annotation-manager/releases)
