@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           # Node 24 ships npm 11, matching the npm that generates the lockfile —
           # avoids npm-major resolution drift that breaks `npm ci`.
