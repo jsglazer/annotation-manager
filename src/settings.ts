@@ -210,7 +210,9 @@ export function renderConfigTable(styles: Record<string, IdentifierStyle>): stri
 		'| ---------- | ---------- | ---------------- | --------- | -------- | ------- |',
 	].join('\n');
 
-	const entries = Object.entries(styles).sort(([a], [b]) => a.localeCompare(b));
+	const entries = Object.entries(styles)
+		.filter((e): e is [string, IdentifierStyle] => e[1] !== undefined)
+		.sort(([a], [b]) => a.localeCompare(b));
 	const rows =
 		entries.length > 0
 			? entries
