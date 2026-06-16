@@ -3,6 +3,7 @@
 [![GitHub release](https://img.shields.io/github/v/release/jsglazer/annotation-manager?logo=github)](https://github.com/jsglazer/annotation-manager/releases)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/jsglazer/annotation-manager/blob/main/LICENSE)
 [![Made with Claude](https://img.shields.io/badge/Made_with-Claude-D97756?logo=anthropic)](https://claude.ai)
+[![Gemini Flash Antigravity](https://img.shields.io/badge/Gemini%20Flash-Antigravity-4f86f7?logo=google-gemini&logoColor=white)](https://github.com/google-gemini)
 [![CI](https://github.com/jsglazer/annotation-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/jsglazer/annotation-manager/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/jsglazer/annotation-manager/actions/workflows/codeql.yml/badge.svg)](https://github.com/jsglazer/annotation-manager/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jsglazer/annotation-manager/badge)](https://securityscorecards.dev/viewer/?uri=github.com/jsglazer/annotation-manager)
