@@ -13,13 +13,6 @@ describe('parseAnnotations', () => {
 		expect(a).toMatchObject({ parent: 'math', child: 'hot', text: 'key formula' });
 	});
 
-	it('captures a trailing citation key', () => {
-		// The insert-citation command emits `{=/{key/=}` (no closing brace after
-		// the key); the parser/decoration regexes match that exact form.
-		const [a] = parseAnnotations('{={note}see=}{=/{smith2020/=}');
-		expect(a?.citation).toBe('smith2020');
-	});
-
 	it('reports 1-based line numbers', () => {
 		const [a] = parseAnnotations('line one\nline two {={t}x=}\nline three');
 		expect(a?.line).toBe(2);

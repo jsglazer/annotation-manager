@@ -9,21 +9,20 @@ import {
 
 describe('parseConfigTable', () => {
 	const table = [
-		'| Identifier | Font Color | Background Color | Font Size | Bib File | Example |',
-		'| --- | --- | --- | --- | --- | --- |',
-		'| math/hot | ff6b6b | fff0f0 | 1.1em | Math.bib | x |',
-		'| math/* | 4ecdc4 | | | | x |',
-		'| (no identifiers configured) | | | | | |',
+		'| Identifier | Font Color | Background Color | Font Size | Example |',
+		'| --- | --- | --- | --- | --- |',
+		'| math/hot | ff6b6b | fff0f0 | 1.1em | x |',
+		'| math/* | 4ecdc4 | | | x |',
+		'| (no identifiers configured) | | | | |',
 	].join('\n');
 
-	it('parses identifiers, colors (adding #), size and bib file', () => {
+	it('parses identifiers, colors (adding #) and size', () => {
 		const styles = parseConfigTable(table);
 		expect(Object.keys(styles).sort()).toEqual(['math/*', 'math/hot']);
 		expect(styles['math/hot']).toEqual({
 			fontColor: '#ff6b6b',
 			backgroundColor: '#fff0f0',
 			fontSize: '1.1em',
-			bibFile: 'Math.bib',
 		});
 	});
 
@@ -37,10 +36,10 @@ describe('parseConfigTable', () => {
 
 	it('ignores prototype-polluting identifier names', () => {
 		const evil = [
-			'| Identifier | Font Color | Background Color | Font Size | Bib File | Example |',
-			'| --- | --- | --- | --- | --- | --- |',
-			'| __proto__ | ff0000 | | | | x |',
-			'| safe | 00ff00 | | | | x |',
+			'| Identifier | Font Color | Background Color | Font Size | Example |',
+			'| --- | --- | --- | --- | --- |',
+			'| __proto__ | ff0000 | | | x |',
+			'| safe | 00ff00 | | | x |',
 		].join('\n');
 		const styles = parseConfigTable(evil);
 		expect(Object.keys(styles)).toEqual(['safe']);
@@ -71,10 +70,10 @@ describe('isValidFontSize', () => {
 describe('resolvedStyle', () => {
 	const styles = parseConfigTable(
 		[
-			'| Identifier | Font Color | Background Color | Font Size | Bib File | Example |',
-			'| --- | --- | --- | --- | --- | --- |',
-			'| math/hot | ff0000 | | | | x |',
-			'| math/* | 00ff00 | | | | x |',
+			'| Identifier | Font Color | Background Color | Font Size | Example |',
+			'| --- | --- | --- | --- | --- |',
+			'| math/hot | ff0000 | | | x |',
+			'| math/* | 00ff00 | | | x |',
 		].join('\n'),
 	);
 

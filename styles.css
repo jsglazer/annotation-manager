@@ -46,13 +46,6 @@
 	color: var(--cc-fg);
 }
 
-/* Hide .bib files in the file explorer when the setting is off. Targets the
-   title element directly (no :has) — its .nav-file wrapper has no intrinsic
-   size of its own, so the row collapses. */
-body.cc-hide-bib-files .nav-file-title[data-path$='.bib'] {
-	display: none;
-}
-
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 
 .cc-sidebar {
@@ -256,37 +249,6 @@ body.cc-hide-bib-files .nav-file-title[data-path$='.bib'] {
 	color: var(--text-on-accent);
 }
 
-/* ── Bib file picker separator ───────────────────────────────────────────── */
-
-.cc-bib-separator {
-	height: 1px;
-	background-color: var(--background-modifier-border);
-	margin: 4px 6px;
-	pointer-events: none;
-	padding: 0;
-}
-
-/* ── Citation picker ─────────────────────────────────────────────────────── */
-
-.cc-cite-row {
-	display: flex;
-	flex-direction: column;
-	gap: 1px;
-}
-
-.cc-cite-key {
-	font-weight: 600;
-	font-size: 0.9em;
-}
-
-.cc-cite-meta {
-	font-size: 0.78em;
-	color: var(--text-muted);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
 /* ── Typeahead dropdown ──────────────────────────────────────────────────── */
 
 .cc-typeahead-dropdown {
@@ -357,12 +319,4 @@ body.cc-hide-bib-files .nav-file-title[data-path$='.bib'] {
 	background: transparent;
 	margin-right: 4px;
 	vertical-align: middle;
-}
-
-/* ── Bib file view hint ──────────────────────────────────────────────────── */
-
-.cc-bib-view-hint {
-	padding: 24px;
-	color: var(--text-muted);
-	font-style: italic;
 }

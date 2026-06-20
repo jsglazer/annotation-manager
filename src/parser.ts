@@ -5,15 +5,11 @@ export interface Annotation {
 	from: number;
 	to: number;
 	line: number; // 1-based line number in the file
-	citation: string; // key from {=/{key}/=} immediately following this annotation, or ''
 }
 
 // New syntax: {={parent/child}content=}  or  {={parent}content=}
 // [\s\S] keeps multi-line support consistent with Reading View and the editor.
 const PATTERN = /\{=\{([^/}\s]+)(?:\/([^}\s]+))?}([\s\S]*?)=}/g;
-
-// Citation marker immediately following an annotation: {=/{key}/=}
-const CITATION_RE = /^\{=\/\{([^/}]+)\/=}/;
 
 // Returns [from, to) ranges of code spans and fenced code blocks in raw markdown.
 function getCodeRanges(content: string): Array<[number, number]> {
@@ -53,7 +49,6 @@ export function parseAnnotations(content: string): Annotation[] {
 		if (isInCodeRange(from, to, codeRanges)) continue;
 
 		const line = content.slice(0, from).split('\n').length;
-		const citMatch = CITATION_RE.exec(content.slice(to));
 		results.push({
 			parent: match[1] ?? '',
 			child: match[2] ?? '',
@@ -61,7 +56,6 @@ export function parseAnnotations(content: string): Annotation[] {
 			from,
 			to,
 			line,
-			citation: citMatch ? (citMatch[1] ?? '') : '',
 		});
 	}
 

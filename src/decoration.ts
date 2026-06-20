@@ -7,9 +7,6 @@ import AnnotationManagerPlugin from './main';
 // [\s\S] keeps multi-line support consistent with Reading View and the parser.
 const PATTERN = /\{=\{([^/}\s]+)(?:\/([^}\s]+))?}([\s\S]*?)=}/g;
 
-// Citation markers: {=/{key}/=}
-const CITATION_PATTERN = /\{=\/\{([^/}]+)\/=}/g;
-
 // Hides delimiters in Live Preview
 const HIDE = Decoration.mark({ class: 'cc-hide' });
 
@@ -170,61 +167,6 @@ function buildDecorations(view: EditorView, plugin: AnnotationManagerPlugin): Bu
 	}
 
 	return { decorations: builder.finish(), annotationRanges };
-}
-
-export function createCitationViewPlugin(plugin: AnnotationManagerPlugin) {
-	return ViewPlugin.fromClass(
-		class {
-			decorations: DecorationSet;
-			private lastStyleVersion: number;
-
-			constructor(view: EditorView) {
-				this.lastStyleVersion = plugin.styleVersion;
-				this.decorations = buildCitationDecorations(view, plugin);
-			}
-
-			update(update: ViewUpdate) {
-				const styleChanged = plugin.styleVersion !== this.lastStyleVersion;
-				if (update.docChanged || update.viewportChanged || styleChanged) {
-					this.lastStyleVersion = plugin.styleVersion;
-					this.decorations = buildCitationDecorations(update.view, plugin);
-				}
-			}
-		},
-		{ decorations: (v) => v.decorations },
-	);
-}
-
-function buildCitationDecorations(
-	view: EditorView,
-	plugin: AnnotationManagerPlugin,
-): DecorationSet {
-	const builder = new RangeSetBuilder<Decoration>();
-	const shouldHide = !plugin.citationVisibilityEnabled;
-	const shouldColor = plugin.citationVisibilityEnabled && !!plugin.settings.citationColor;
-	if (!shouldHide && !shouldColor) return builder.finish();
-
-	const mark = shouldHide
-		? HIDE
-		: Decoration.mark({
-				class: 'cc-citation',
-				attributes: { style: `color: ${plugin.settings.citationColor}` },
-			});
-
-	for (const { from, to } of view.visibleRanges) {
-		const text = view.state.doc.sliceString(from, to);
-		const codeRanges = getCodeRanges(text);
-		const re = new RegExp(CITATION_PATTERN.source, 'g');
-		let match: RegExpExecArray | null;
-		while ((match = re.exec(text)) !== null) {
-			const relStart = match.index;
-			const relEnd = relStart + (match[0]?.length ?? 0);
-			if (isInCodeRange(relStart, relEnd, codeRanges)) continue;
-			builder.add(from + relStart, from + relEnd, mark);
-		}
-	}
-
-	return builder.finish();
 }
 
 export function createCommentViewPlugin(plugin: AnnotationManagerPlugin) {

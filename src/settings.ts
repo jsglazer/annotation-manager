@@ -6,7 +6,6 @@ export interface IdentifierStyle {
 	fontSize: string;
 	fontColor: string;
 	backgroundColor: string;
-	bibFile?: string;
 }
 
 export interface AnnotationManagerSettings {
@@ -14,25 +13,18 @@ export interface AnnotationManagerSettings {
 	identifierStyles: Record<string, IdentifierStyle>;
 	configSource: 'settings' | 'file';
 	configFilePath: string;
-	bibFolderPath: string;
-	showBibFilesInBrowser: boolean;
-	citationColor: string;
 }
 
 export const DEFAULT_SETTINGS: AnnotationManagerSettings = {
 	identifierStyles: {},
 	configSource: 'settings',
 	configFilePath: 'OccConfig.md',
-	bibFolderPath: '',
-	showBibFilesInBrowser: true,
-	citationColor: '',
 };
 
 export const EMPTY_STYLE: IdentifierStyle = {
 	fontSize: '',
 	fontColor: '',
 	backgroundColor: '',
-	bibFile: '',
 };
 
 // --- Helpers shared with decoration.ts and main.ts ---
@@ -128,8 +120,6 @@ export function parseConfigTable(content: string): Record<string, IdentifierStyl
 			.map((c) => c.trim());
 
 		const [name = '', fontColor = '', bgColor = '', fontSize = ''] = cols;
-		// 6-col format includes Bib File column before Example; 5-col is legacy
-		const bibFile = cols.length >= 6 ? (cols[4] ?? '').replace(/^\[|\]$/g, '').trim() : '';
 		// Skip empty names, placeholder rows like "(no identifiers configured)",
 		// and prototype-polluting keys from untrusted file content.
 		if (!name || name.startsWith('(') || isUnsafeKey(name)) continue;
@@ -138,7 +128,6 @@ export function parseConfigTable(content: string): Record<string, IdentifierStyl
 			fontColor: normalizeHex(fontColor),
 			backgroundColor: normalizeHex(bgColor),
 			fontSize: fontSize.trim(),
-			bibFile,
 		};
 	}
 
@@ -204,10 +193,9 @@ export function renderConfigTable(styles: Record<string, IdentifierStyle>): stri
 		'',
 		'Edit this table to define identifier styles. Save the file to apply changes.',
 		'Do not use the `#` prefix for hex colors. Font size accepts any CSS value (e.g. `1.1em`, `14px`).',
-		'Bib File: optional .bib filename to associate with this identifier (e.g. `ToRead.bib`).',
 		'',
-		'| Identifier | Font Color | Background Color | Font Size | Bib File | Example |',
-		'| ---------- | ---------- | ---------------- | --------- | -------- | ------- |',
+		'| Identifier | Font Color | Background Color | Font Size | Example |',
+		'| ---------- | ---------- | ---------------- | --------- | ------- |',
 	].join('\n');
 
 	const entries = Object.entries(styles)
@@ -218,10 +206,10 @@ export function renderConfigTable(styles: Record<string, IdentifierStyle>): stri
 			? entries
 					.map(
 						([id, s]) =>
-							`| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} | ${s.bibFile ?? ''} | ${makeExampleCell(s)} |`,
+							`| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} | ${makeExampleCell(s)} |`,
 					)
 					.join('\n')
-			: '| (no identifiers configured) | | | | | |';
+			: '| (no identifiers configured) | | | | |';
 
 	return header + '\n' + rows + '\n';
 }
@@ -248,22 +236,6 @@ function clearColorStyle(input: HTMLInputElement): void {
 }
 
 // --- Typeahead helpers ---
-
-function vaultFolderPaths(app: App, query: string): string[] {
-	const q = query.toLowerCase();
-	const folders = new Set<string>();
-	for (const file of app.vault.getFiles()) {
-		let node = file.parent;
-		while (node && node.path && node.path !== '/') {
-			folders.add(node.path);
-			node = node.parent;
-		}
-	}
-	return [...folders]
-		.filter((p) => p.toLowerCase().includes(q))
-		.sort()
-		.slice(0, 12);
-}
 
 function vaultMarkdownPaths(app: App, query: string): string[] {
 	const q = query.toLowerCase();
@@ -401,56 +373,6 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		});
 		p2.appendText(' in the repository.');
 
-		// ── Bibliography ───────────────────────────────────────────────────────
-		new Setting(containerEl).setName('Bibliography').setHeading();
-
-		new Setting(containerEl)
-			.setName('Bib files folder')
-			.setDesc(
-				'Vault-relative path to the folder containing .bib files (e.g. Meta/Bibs). Required before citations can be inserted.',
-			)
-			.addText((t) => {
-				attachTypeahead(
-					t.inputEl,
-					(q) => vaultFolderPaths(this.app, q),
-					(v) => {
-						this.plugin.settings.bibFolderPath = v;
-						void this.plugin.saveSettings();
-					},
-				);
-				t.setPlaceholder('Meta/Bibs')
-					.setValue(this.plugin.settings.bibFolderPath)
-					.onChange(async (v) => {
-						this.plugin.settings.bibFolderPath = v.trim();
-						await this.plugin.saveSettings();
-					});
-			});
-
-		this.renderColorSetting(
-			containerEl,
-			'Citation color',
-			'Font color applied to citation markers {=/{key}/=} including delimiters. Leave blank to inherit.',
-			() => this.plugin.settings.citationColor,
-			async (v) => {
-				this.plugin.settings.citationColor = v;
-				await this.plugin.saveSettings();
-				this.plugin.bumpStyleVersion();
-			},
-		);
-
-		new Setting(containerEl)
-			.setName('Show .bib files in file browser')
-			.setDesc(
-				'When enabled, the plugin enables Obsidian\'s "Show all file types" so .bib files appear in the file explorer. When disabled, .bib files are hidden from view via CSS.',
-			)
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.showBibFilesInBrowser).onChange(async (v) => {
-					this.plugin.settings.showBibFilesInBrowser = v;
-					await this.plugin.saveSettings();
-					this.plugin.applyBibFileVisibility();
-				}),
-			);
-
 		// ── Config Source ──────────────────────────────────────────────────────
 		new Setting(containerEl).setName('Config source').setHeading();
 
@@ -532,7 +454,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 
 		containerEl.createEl('p', {
 			text:
-				'Table columns: Identifier | Font Color | Background Color | Font Size | Bib File | Example. ' +
+				'Table columns: Identifier | Font Color | Background Color | Font Size | Example. ' +
 				'No # prefix for hex colors. The plugin reloads automatically when the file is saved.',
 			cls: 'setting-item-description',
 		});
@@ -634,19 +556,6 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 						this.plugin.bumpStyleVersion();
 						updatePreview();
-					}),
-			);
-
-		new Setting(wrap)
-			.setName('Bib file')
-			.setDesc('Optional .bib filename to associate with this identifier (e.g. ToRead.bib)')
-			.addText((t) =>
-				t
-					.setPlaceholder('ToRead.bib')
-					.setValue(style.bibFile ?? '')
-					.onChange(async (v) => {
-						style.bibFile = v.trim();
-						await this.plugin.saveSettings();
 					}),
 			);
 

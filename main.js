@@ -36,16 +36,12 @@ function isUnsafeKey(key) {
 var DEFAULT_SETTINGS = {
   identifierStyles: {},
   configSource: "settings",
-  configFilePath: "OccConfig.md",
-  bibFolderPath: "",
-  showBibFilesInBrowser: true,
-  citationColor: ""
+  configFilePath: "OccConfig.md"
 };
 var EMPTY_STYLE = {
   fontSize: "",
   fontColor: "",
-  backgroundColor: "",
-  bibFile: ""
+  backgroundColor: ""
 };
 function identifierKeyToClass(key) {
   return "cc-id-" + key.replace(/\/\*/g, "-wc").replace(/\//g, "-").replace(/[^a-zA-Z0-9-]/g, "-");
@@ -85,7 +81,6 @@ function isValidFontSize(value) {
   return /^\d+(\.\d+)?(px|pt|em|rem|%|vh|vw)$/.test(v) || /^[a-zA-Z-]+$/.test(v);
 }
 function parseConfigTable(content) {
-  var _a;
   const styles = {};
   const lines = content.split("\n");
   let headerSeen = false;
@@ -104,13 +99,11 @@ function parseConfigTable(content) {
     if (!separatorSeen) continue;
     const cols = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
     const [name = "", fontColor = "", bgColor = "", fontSize = ""] = cols;
-    const bibFile = cols.length >= 6 ? ((_a = cols[4]) != null ? _a : "").replace(/^\[|\]$/g, "").trim() : "";
     if (!name || name.startsWith("(") || isUnsafeKey(name)) continue;
     styles[name] = {
       fontColor: normalizeHex(fontColor),
       backgroundColor: normalizeHex(bgColor),
-      fontSize: fontSize.trim(),
-      bibFile
+      fontSize: fontSize.trim()
     };
   }
   return styles;
@@ -158,18 +151,14 @@ function renderConfigTable(styles) {
     "",
     "Edit this table to define identifier styles. Save the file to apply changes.",
     "Do not use the `#` prefix for hex colors. Font size accepts any CSS value (e.g. `1.1em`, `14px`).",
-    "Bib File: optional .bib filename to associate with this identifier (e.g. `ToRead.bib`).",
     "",
-    "| Identifier | Font Color | Background Color | Font Size | Bib File | Example |",
-    "| ---------- | ---------- | ---------------- | --------- | -------- | ------- |"
+    "| Identifier | Font Color | Background Color | Font Size | Example |",
+    "| ---------- | ---------- | ---------------- | --------- | ------- |"
   ].join("\n");
-  const entries = Object.entries(styles).sort(([a], [b]) => a.localeCompare(b));
+  const entries = Object.entries(styles).filter((e) => e[1] !== void 0).sort(([a], [b]) => a.localeCompare(b));
   const rows = entries.length > 0 ? entries.map(
-    ([id, s]) => {
-      var _a;
-      return `| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} | ${(_a = s.bibFile) != null ? _a : ""} | ${makeExampleCell(s)} |`;
-    }
-  ).join("\n") : "| (no identifiers configured) | | | | | |";
+    ([id, s]) => `| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} | ${makeExampleCell(s)} |`
+  ).join("\n") : "| (no identifiers configured) | | | | |";
   return header + "\n" + rows + "\n";
 }
 function isValidHex(s) {
@@ -186,18 +175,6 @@ function applyColorStyle(input, hex) {
 }
 function clearColorStyle(input) {
   input.setCssStyles({ backgroundColor: "", color: "" });
-}
-function vaultFolderPaths(app, query) {
-  const q = query.toLowerCase();
-  const folders = /* @__PURE__ */ new Set();
-  for (const file of app.vault.getFiles()) {
-    let node = file.parent;
-    while (node && node.path && node.path !== "/") {
-      folders.add(node.path);
-      node = node.parent;
-    }
-  }
-  return [...folders].filter((p) => p.toLowerCase().includes(q)).sort().slice(0, 12);
 }
 function vaultMarkdownPaths(app, query) {
   const q = query.toLowerCase();
@@ -303,43 +280,6 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
       attr: { target: "_blank", rel: "noopener" }
     });
     p2.appendText(" in the repository.");
-    new import_obsidian.Setting(containerEl).setName("Bibliography").setHeading();
-    new import_obsidian.Setting(containerEl).setName("Bib files folder").setDesc(
-      "Vault-relative path to the folder containing .bib files (e.g. Meta/Bibs). Required before citations can be inserted."
-    ).addText((t) => {
-      attachTypeahead(
-        t.inputEl,
-        (q) => vaultFolderPaths(this.app, q),
-        (v) => {
-          this.plugin.settings.bibFolderPath = v;
-          void this.plugin.saveSettings();
-        }
-      );
-      t.setPlaceholder("Meta/Bibs").setValue(this.plugin.settings.bibFolderPath).onChange(async (v) => {
-        this.plugin.settings.bibFolderPath = v.trim();
-        await this.plugin.saveSettings();
-      });
-    });
-    this.renderColorSetting(
-      containerEl,
-      "Citation color",
-      "Font color applied to citation markers {=/{key}/=} including delimiters. Leave blank to inherit.",
-      () => this.plugin.settings.citationColor,
-      async (v) => {
-        this.plugin.settings.citationColor = v;
-        await this.plugin.saveSettings();
-        this.plugin.bumpStyleVersion();
-      }
-    );
-    new import_obsidian.Setting(containerEl).setName("Show .bib files in file browser").setDesc(
-      `When enabled, the plugin enables Obsidian's "Show all file types" so .bib files appear in the file explorer. When disabled, .bib files are hidden from view via CSS.`
-    ).addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.showBibFilesInBrowser).onChange(async (v) => {
-        this.plugin.settings.showBibFilesInBrowser = v;
-        await this.plugin.saveSettings();
-        this.plugin.applyBibFileVisibility();
-      })
-    );
     new import_obsidian.Setting(containerEl).setName("Config source").setHeading();
     new import_obsidian.Setting(containerEl).setName("Identifier style source").setDesc("Define styles in this UI, or read them from a Markdown table in your vault").addDropdown(
       (dd) => dd.addOption("settings", "Settings UI").addOption("file", "Config file").setValue(this.plugin.settings.configSource).onChange(async (v) => {
@@ -394,7 +334,7 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
       })
     );
     containerEl.createEl("p", {
-      text: "Table columns: Identifier | Font Color | Background Color | Font Size | Bib File | Example. No # prefix for hex colors. The plugin reloads automatically when the file is saved.",
+      text: "Table columns: Identifier | Font Color | Background Color | Font Size | Example. No # prefix for hex colors. The plugin reloads automatically when the file is saved.",
       cls: "setting-item-description"
     });
     const styles = this.plugin.settings.identifierStyles;
@@ -471,15 +411,6 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
         this.plugin.bumpStyleVersion();
         updatePreview();
       })
-    );
-    new import_obsidian.Setting(wrap).setName("Bib file").setDesc("Optional .bib filename to associate with this identifier (e.g. ToRead.bib)").addText(
-      (t) => {
-        var _a;
-        return t.setPlaceholder("ToRead.bib").setValue((_a = style.bibFile) != null ? _a : "").onChange(async (v) => {
-          style.bibFile = v.trim();
-          await this.plugin.saveSettings();
-        });
-      }
     );
     this.renderColorSetting(
       wrap,
@@ -568,7 +499,6 @@ var VaultFileSuggestModal = class extends import_obsidian.FuzzySuggestModal {
 
 // src/parser.ts
 var PATTERN = /\{=\{([^/}\s]+)(?:\/([^}\s]+))?}([\s\S]*?)=}/g;
-var CITATION_RE = /^\{=\/\{([^/}]+)\/=}/;
 function getCodeRanges(content) {
   const ranges = [];
   const fenced = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$/gm;
@@ -586,7 +516,7 @@ function isInCodeRange(from, to, ranges) {
   return ranges.some(([rFrom, rTo]) => from < rTo && to > rFrom);
 }
 function parseAnnotations(content) {
-  var _a, _b, _c, _d, _e, _f;
+  var _a, _b, _c, _d, _e;
   const codeRanges = getCodeRanges(content);
   const results = [];
   const re = new RegExp(PATTERN.source, "g");
@@ -596,15 +526,13 @@ function parseAnnotations(content) {
     const to = match.index + ((_b = (_a = match[0]) == null ? void 0 : _a.length) != null ? _b : 0);
     if (isInCodeRange(from, to, codeRanges)) continue;
     const line = content.slice(0, from).split("\n").length;
-    const citMatch = CITATION_RE.exec(content.slice(to));
     results.push({
       parent: (_c = match[1]) != null ? _c : "",
       child: (_d = match[2]) != null ? _d : "",
       text: ((_e = match[3]) != null ? _e : "").trim(),
       from,
       to,
-      line,
-      citation: citMatch ? (_f = citMatch[1]) != null ? _f : "" : ""
+      line
     });
   }
   return results;
@@ -614,7 +542,6 @@ function parseAnnotations(content) {
 var import_view = require("@codemirror/view");
 var import_state = require("@codemirror/state");
 var PATTERN2 = /\{=\{([^/}\s]+)(?:\/([^}\s]+))?}([\s\S]*?)=}/g;
-var CITATION_PATTERN = /\{=\/\{([^/}]+)\/=}/g;
 var HIDE = import_view.Decoration.mark({ class: "cc-hide" });
 var NEUTRAL_MARK = import_view.Decoration.mark({ class: "cc-annotation-editor" });
 var MATH_RE = /\$[^$\n]+\$/g;
@@ -716,48 +643,6 @@ function buildDecorations(view, plugin) {
     }
   }
   return { decorations: builder.finish(), annotationRanges };
-}
-function createCitationViewPlugin(plugin) {
-  return import_view.ViewPlugin.fromClass(
-    class {
-      constructor(view) {
-        this.lastStyleVersion = plugin.styleVersion;
-        this.decorations = buildCitationDecorations(view, plugin);
-      }
-      update(update) {
-        const styleChanged = plugin.styleVersion !== this.lastStyleVersion;
-        if (update.docChanged || update.viewportChanged || styleChanged) {
-          this.lastStyleVersion = plugin.styleVersion;
-          this.decorations = buildCitationDecorations(update.view, plugin);
-        }
-      }
-    },
-    { decorations: (v) => v.decorations }
-  );
-}
-function buildCitationDecorations(view, plugin) {
-  var _a, _b;
-  const builder = new import_state.RangeSetBuilder();
-  const shouldHide = !plugin.citationVisibilityEnabled;
-  const shouldColor = plugin.citationVisibilityEnabled && !!plugin.settings.citationColor;
-  if (!shouldHide && !shouldColor) return builder.finish();
-  const mark = shouldHide ? HIDE : import_view.Decoration.mark({
-    class: "cc-citation",
-    attributes: { style: `color: ${plugin.settings.citationColor}` }
-  });
-  for (const { from, to } of view.visibleRanges) {
-    const text = view.state.doc.sliceString(from, to);
-    const codeRanges = getCodeRanges2(text);
-    const re = new RegExp(CITATION_PATTERN.source, "g");
-    let match;
-    while ((match = re.exec(text)) !== null) {
-      const relStart = match.index;
-      const relEnd = relStart + ((_b = (_a = match[0]) == null ? void 0 : _a.length) != null ? _b : 0);
-      if (isInCodeRange2(relStart, relEnd, codeRanges)) continue;
-      builder.add(from + relStart, from + relEnd, mark);
-    }
-  }
-  return builder.finish();
 }
 function createCommentViewPlugin(plugin) {
   return import_view.ViewPlugin.fromClass(
@@ -876,26 +761,37 @@ var AnnotationSidebarView = class extends import_obsidian2.ItemView {
       for (const entry of entries) {
         const item = itemsEl.createDiv("cc-sidebar-item");
         const fileName = (_b = (_a = entry.filePath.split("/").pop()) == null ? void 0 : _a.replace(/\.md$/, "")) != null ? _b : entry.filePath;
+        item.createEl("span", { text: fileName, cls: "cc-sidebar-filename" });
+        const words = entry.text.split(/\s+/).filter(Boolean);
+        const excerpt = words.length === 0 ? "(empty)" : words.slice(0, 3).join(" ") + (words.length > 3 ? "..." : "");
         item.createEl("span", {
-          text: entry.text.length > 60 ? entry.text.slice(0, 60) + "\u2026" : entry.text || "(empty)",
+          text: `${excerpt}(${entry.line})`,
           cls: "cc-sidebar-text"
-        });
-        item.createEl("span", {
-          text: `${fileName} : ${entry.line}`,
-          cls: "cc-sidebar-loc"
         });
         item.addEventListener("click", () => {
           void (async () => {
             const file = this.app.vault.getAbstractFileByPath(entry.filePath);
             if (!(file instanceof import_obsidian2.TFile)) return;
-            const leaf = this.app.workspace.getLeaf(false);
-            await leaf.openFile(file);
+            const existing = this.app.workspace.getLeavesOfType("markdown").find((l) => {
+              var _a2;
+              return l.view instanceof import_obsidian2.MarkdownView && ((_a2 = l.view.file) == null ? void 0 : _a2.path) === entry.filePath;
+            });
+            let leaf;
+            if (existing) {
+              leaf = existing;
+              await this.app.workspace.revealLeaf(leaf);
+            } else {
+              leaf = this.app.workspace.getLeaf(false);
+              await leaf.openFile(file);
+            }
+            await new Promise((r) => window.setTimeout(r, 50));
             const view = leaf.view;
             if (view instanceof import_obsidian2.MarkdownView) {
-              const editor = view.editor;
-              const pos = editor.offsetToPos(entry.from);
-              editor.setCursor(pos);
-              editor.scrollIntoView({ from: pos, to: pos }, true);
+              const line = Math.max(0, entry.line - 1);
+              const pos = { line, ch: 0 };
+              view.editor.setCursor(pos);
+              view.editor.scrollIntoView({ from: pos, to: pos }, true);
+              view.setEphemeralState({ line });
             }
           })();
         });
@@ -918,102 +814,7 @@ var AnnotationSidebarView = class extends import_obsidian2.ItemView {
   }
 };
 
-// src/bibtex.ts
-function stripBibBraces(value) {
-  return value.replace(/[{}]/g, "").trim();
-}
-function extractBracedValue(str, start) {
-  if (str[start] !== "{") return null;
-  let depth = 0;
-  let contentStart = -1;
-  let i = start;
-  while (i < str.length) {
-    if (str[i] === "{") {
-      depth++;
-      if (depth === 1) contentStart = i + 1;
-    } else if (str[i] === "}") {
-      depth--;
-      if (depth === 0) return { value: str.slice(contentStart, i), end: i + 1 };
-    }
-    i++;
-  }
-  return null;
-}
-function parseFields(body) {
-  var _a, _b;
-  const fields = {};
-  let i = 0;
-  const len = body.length;
-  while (i < len) {
-    while (i < len && /[\s,]/.test((_a = body[i]) != null ? _a : "")) i++;
-    if (i >= len) break;
-    const nameStart = i;
-    while (i < len && body[i] !== "=" && body[i] !== "," && body[i] !== "}") i++;
-    const name = body.slice(nameStart, i).trim().toLowerCase();
-    if (!name || body[i] !== "=") {
-      i++;
-      continue;
-    }
-    i++;
-    while (i < len && /[ \t\n\r]/.test((_b = body[i]) != null ? _b : "")) i++;
-    let value = "";
-    if (i < len && body[i] === "{") {
-      const result = extractBracedValue(body, i);
-      if (result) {
-        value = result.value;
-        i = result.end;
-      }
-    } else if (i < len && body[i] === '"') {
-      i++;
-      const start = i;
-      while (i < len && body[i] !== '"') i++;
-      value = body.slice(start, i);
-      if (i < len) i++;
-    } else {
-      const start = i;
-      while (i < len && body[i] !== "," && body[i] !== "\n" && body[i] !== "\r" && body[i] !== "}")
-        i++;
-      value = body.slice(start, i).trim();
-    }
-    if (name && !isUnsafeKey(name)) fields[name] = value;
-  }
-  return fields;
-}
-function parseBibFile(content) {
-  var _a, _b, _c, _d, _e;
-  const entries = [];
-  const entryRe = /@(\w+)\s*\{/g;
-  let match;
-  while ((match = entryRe.exec(content)) !== null) {
-    const type = ((_a = match[1]) != null ? _a : "").toLowerCase();
-    if (type === "comment" || type === "string" || type === "preamble") continue;
-    const blockStart = match.index + match[0].length;
-    let depth = 1;
-    let i = blockStart;
-    while (i < content.length && depth > 0) {
-      if (content[i] === "{") depth++;
-      else if (content[i] === "}") depth--;
-      i++;
-    }
-    const block = content.slice(blockStart, i - 1);
-    const commaIdx = block.indexOf(",");
-    if (commaIdx === -1) continue;
-    const key = block.slice(0, commaIdx).trim();
-    if (!key) continue;
-    const fields = parseFields(block.slice(commaIdx + 1));
-    entries.push({
-      key,
-      type,
-      author: stripBibBraces((_b = fields["author"]) != null ? _b : ""),
-      year: stripBibBraces((_c = fields["year"]) != null ? _c : ""),
-      title: stripBibBraces((_e = (_d = fields["shorttitle"]) != null ? _d : fields["title"]) != null ? _e : "")
-    });
-  }
-  return entries;
-}
-
 // src/main.ts
-var HIDE_BIB_CLASS = "cc-hide-bib-files";
 var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obsidian3.Plugin {
   constructor() {
     super(...arguments);
@@ -1025,8 +826,6 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     // applies custom color to the bracket+identifier portion
     this.textFormattingEnabled = true;
     // applies custom color to the annotation text content
-    this.citationVisibilityEnabled = true;
-    // shows/hides {=/{key}/=} citation markers
     this.lastUsedIdentifier = null;
     this.editorViews = /* @__PURE__ */ new Set();
     this.fileAnnotations = /* @__PURE__ */ new Map();
@@ -1038,13 +837,14 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
   }
   async onload() {
     await this.loadSettings();
-    this.updateStyleSheet();
     this.addSettingTab(new AnnotationManagerSettingTab(this.app, this));
-    this.registerView(BIB_VIEW_TYPE, (leaf) => new BibFileView(leaf));
-    this.registerExtensions(["bib"], BIB_VIEW_TYPE);
     this.registerEditorExtension(createCommentViewPlugin(this));
-    this.registerEditorExtension(createCitationViewPlugin(this));
-    this.registerMarkdownPostProcessor((el) => this.processReadingView(el));
+    this.registerMarkdownPostProcessor((el, ctx) => {
+      this.processReadingView(el);
+      if (this.settings.configSource === "file" && ctx.sourcePath === (0, import_obsidian3.normalizePath)(this.settings.configFilePath)) {
+        this.processConfigTable(el, ctx.sourcePath);
+      }
+    });
     this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new AnnotationSidebarView(leaf, this));
     this.addRibbonIcon("message-square", "Annotation Manager: show annotations", () => {
       void this.toggleSidebar();
@@ -1123,53 +923,6 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
         );
       }
     });
-    this.addCommand({
-      id: "toggle-citation-visibility",
-      name: "Toggle citation visibility",
-      callback: () => {
-        this.citationVisibilityEnabled = !this.citationVisibilityEnabled;
-        this.bumpStyleVersion();
-        new import_obsidian3.Notice(`Citations ${this.citationVisibilityEnabled ? "visible" : "hidden"}`);
-      }
-    });
-    this.addCommand({
-      id: "insert-citation",
-      name: "Insert citation",
-      editorCallback: async (editor) => {
-        if (!this.settings.bibFolderPath) {
-          new import_obsidian3.Notice(
-            "Annotation Manager: set the bib files folder path in settings before inserting citations."
-          );
-          return;
-        }
-        const bibFiles = this.bibFilesInFolder();
-        if (bibFiles.length === 0) {
-          new import_obsidian3.Notice(
-            `No .bib files found in "${this.settings.bibFolderPath}". Check the folder path in settings.`
-          );
-          return;
-        }
-        const insertPos = editor.getCursor();
-        let specificBibFile = null;
-        const annotationId = getAnnotationIdentifierAtCursor(editor);
-        if (annotationId) {
-          const slashIdx = annotationId.indexOf("/");
-          const parent = slashIdx !== -1 ? annotationId.slice(0, slashIdx) : annotationId;
-          const child = slashIdx !== -1 ? annotationId.slice(slashIdx + 1) : "";
-          const style = resolvedStyle(parent, child, this.settings.identifierStyles);
-          specificBibFile = (style == null ? void 0 : style.bibFile) || null;
-        }
-        new BibFileSuggestModal(this.app, bibFiles, specificBibFile, (selectedFile) => {
-          void (async () => {
-            const content = await this.app.vault.cachedRead(selectedFile);
-            const entries = parseBibFile(content).sort((a, b) => a.key.localeCompare(b.key));
-            new CitationSuggestModal(this.app, entries, (key) => {
-              editor.replaceRange(`{=/{${key}/=}`, insertPos);
-            }).open();
-          })();
-        }).open();
-      }
-    });
     this.registerEvent(
       this.app.workspace.on("editor-menu", (menu, editor) => {
         const selected = editor.getSelection();
@@ -1200,7 +953,6 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       }
       this.setupDataviewIntegration();
       this.addRightSidebarButton();
-      this.applyBibFileVisibility();
       const leaves = this.app.workspace.getLeavesOfType(SIDEBAR_VIEW_TYPE);
       if (leaves.length === 0) {
         const leaf = this.app.workspace.getRightLeaf(false);
@@ -1237,9 +989,6 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
         }
       })
     );
-  }
-  onunload() {
-    activeDocument.body.removeClass(HIDE_BIB_CLASS);
   }
   async loadSettings() {
     this.settings = Object.assign(
@@ -1335,17 +1084,9 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       console.warn("Annotation Manager: right split button injection failed", e);
     }
   }
-  // Per-identifier colors are applied as inline styles (editor decorations in
-  // decoration.ts, Reading View spans in processReadingView). The only global
-  // state left is the .bib-hiding toggle, expressed as a <body> class consumed
-  // by styles.css.
-  updateStyleSheet() {
-    activeDocument.body.toggleClass(HIDE_BIB_CLASS, !this.settings.showBibFilesInBrowser);
-  }
   // Called by settings and toggle commands to rebuild styles and refresh all views.
   bumpStyleVersion() {
     this.styleVersion++;
-    this.updateStyleSheet();
     this.app.workspace.updateOptions();
     this.app.workspace.iterateAllLeaves((leaf) => {
       if (leaf.view instanceof import_obsidian3.MarkdownView) {
@@ -1391,62 +1132,125 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
   // text would be transformed (so the original text node is left untouched).
   buildReadingFragment(value) {
     var _a, _b, _c;
+    if (!this.syntaxHidingEnabled) return null;
     const frag = activeDocument.createDocumentFragment();
     let changed = false;
-    if (this.syntaxHidingEnabled) {
-      const re = new RegExp(_AnnotationManagerPlugin.READING_ANNOTATION.source, "g");
-      let lastIndex = 0;
-      let m;
-      while ((m = re.exec(value)) !== null) {
-        if (this.appendCitations(frag, value.slice(lastIndex, m.index))) changed = true;
-        const span = createSpan({ cls: "cc-annotation" });
-        if (this.textFormattingEnabled) {
-          const style = resolvedStyle((_a = m[1]) != null ? _a : "", (_b = m[2]) != null ? _b : "", this.settings.identifierStyles);
-          if (style) this.applyInlineStyle(span, style);
-        }
-        this.appendCitations(span, ((_c = m[3]) != null ? _c : "").trim());
-        frag.appendChild(span);
-        lastIndex = m.index + m[0].length;
-        changed = true;
-      }
-      if (this.appendCitations(frag, value.slice(lastIndex))) changed = true;
-    } else {
-      if (this.appendCitations(frag, value)) changed = true;
-    }
-    return changed ? frag : null;
-  }
-  // Appends text to parent, wrapping/hiding any {=/{key}/=} citation markers.
-  // Returns true if any citation was transformed.
-  appendCitations(parent, text) {
-    if (!text) return false;
-    const hide = !this.citationVisibilityEnabled;
-    const color = this.citationVisibilityEnabled && !!this.settings.citationColor;
-    if (!hide && !color) {
-      parent.appendChild(activeDocument.createTextNode(text));
-      return false;
-    }
-    const re = new RegExp(_AnnotationManagerPlugin.READING_CITATION.source, "g");
+    const re = new RegExp(_AnnotationManagerPlugin.READING_ANNOTATION.source, "g");
     let lastIndex = 0;
-    let changed = false;
     let m;
-    while ((m = re.exec(text)) !== null) {
+    while ((m = re.exec(value)) !== null) {
       if (m.index > lastIndex) {
-        parent.appendChild(activeDocument.createTextNode(text.slice(lastIndex, m.index)));
+        frag.appendChild(activeDocument.createTextNode(value.slice(lastIndex, m.index)));
       }
-      if (hide) {
-        parent.appendChild(createSpan({ cls: "cc-hide" }));
-      } else {
-        const span = createSpan({ cls: "cc-citation", text: m[0] });
-        span.setCssStyles({ color: this.settings.citationColor });
-        parent.appendChild(span);
+      const span = createSpan({ cls: "cc-annotation" });
+      if (this.textFormattingEnabled) {
+        const style = resolvedStyle((_a = m[1]) != null ? _a : "", (_b = m[2]) != null ? _b : "", this.settings.identifierStyles);
+        if (style) this.applyInlineStyle(span, style);
       }
+      span.appendChild(activeDocument.createTextNode(((_c = m[3]) != null ? _c : "").trim()));
+      frag.appendChild(span);
       lastIndex = m.index + m[0].length;
       changed = true;
     }
-    if (lastIndex < text.length) {
-      parent.appendChild(activeDocument.createTextNode(text.slice(lastIndex)));
+    if (lastIndex < value.length) {
+      frag.appendChild(activeDocument.createTextNode(value.slice(lastIndex)));
     }
-    return changed;
+    return changed ? frag : null;
+  }
+  // ── Config-table color picker (reading view of AMConfig.md) ─────────────
+  processConfigTable(el, sourcePath) {
+    var _a, _b, _c;
+    const tables = el.querySelectorAll("table");
+    for (const table of Array.from(tables)) {
+      const ths = Array.from(table.querySelectorAll("th"));
+      const headers = ths.map((th) => {
+        var _a2, _b2;
+        return (_b2 = (_a2 = th.textContent) == null ? void 0 : _a2.trim()) != null ? _b2 : "";
+      });
+      const fontColorIdx = headers.findIndex((h) => h === "Font Color");
+      const bgColorIdx = headers.findIndex((h) => h === "Background Color");
+      if (fontColorIdx === -1 && bgColorIdx === -1) continue;
+      const rows = Array.from(table.querySelectorAll("tbody tr"));
+      for (const row of rows) {
+        const cells = Array.from(row.querySelectorAll("td"));
+        const identifier = (_c = (_b = (_a = cells[0]) == null ? void 0 : _a.textContent) == null ? void 0 : _b.trim()) != null ? _c : "";
+        if (!identifier || identifier.startsWith("(")) continue;
+        if (fontColorIdx !== -1) {
+          const cell = cells[fontColorIdx];
+          if (cell) this.injectConfigColorPicker(cell, identifier, "fontColor", sourcePath);
+        }
+        if (bgColorIdx !== -1) {
+          const cell = cells[bgColorIdx];
+          if (cell) this.injectConfigColorPicker(cell, identifier, "bgColor", sourcePath);
+        }
+      }
+    }
+  }
+  injectConfigColorPicker(cell, identifier, field, sourcePath) {
+    var _a, _b;
+    const rawHex = (_b = (_a = cell.textContent) == null ? void 0 : _a.trim()) != null ? _b : "";
+    const fullHex = rawHex ? rawHex.startsWith("#") ? rawHex : "#" + rawHex : "#000000";
+    const isValidColorHex = /^#[0-9a-fA-F]{6}$/.test(fullHex);
+    cell.empty();
+    const picker = cell.createEl("input", {
+      cls: "cc-config-color-picker",
+      attr: { type: "color" }
+    });
+    picker.value = isValidColorHex ? fullHex : "#000000";
+    cell.appendText(rawHex);
+    picker.addEventListener("change", () => {
+      void (async () => {
+        const newHex = picker.value;
+        const file = this.app.vault.getAbstractFileByPath(sourcePath);
+        if (!(file instanceof import_obsidian3.TFile)) return;
+        const style = this.settings.identifierStyles[identifier];
+        if (style) {
+          if (field === "fontColor") style.fontColor = newHex;
+          else style.backgroundColor = newHex;
+          await this.saveSettings();
+          this.bumpStyleVersion();
+        }
+        this._writingConfigFile = true;
+        try {
+          await this.app.vault.process(file, (content) => {
+            const withColor = this.updateConfigTableColor(content, identifier, field, newHex);
+            return injectExamples(withColor, this.settings.identifierStyles);
+          });
+        } finally {
+          this._writingConfigFile = false;
+        }
+      })();
+    });
+  }
+  updateConfigTableColor(content, identifier, field, newHex) {
+    const hexWithoutHash = newHex.startsWith("#") ? newHex.slice(1) : newHex;
+    const lines = content.split("\n");
+    let headerSeen = false;
+    let separatorSeen = false;
+    let fontColorColIdx = -1;
+    let bgColorColIdx = -1;
+    return lines.map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("|")) return line;
+      if (/^\|[-|:\s]+\|?$/.test(trimmed)) {
+        if (headerSeen) separatorSeen = true;
+        return line;
+      }
+      if (!headerSeen) {
+        headerSeen = true;
+        const cols2 = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+        fontColorColIdx = cols2.findIndex((c) => c === "Font Color");
+        bgColorColIdx = cols2.findIndex((c) => c === "Background Color");
+        return line;
+      }
+      if (!separatorSeen) return line;
+      const cols = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+      if (cols[0] !== identifier) return line;
+      const targetIdx = field === "fontColor" ? fontColorColIdx : bgColorColIdx;
+      if (targetIdx === -1 || targetIdx >= cols.length) return line;
+      cols[targetIdx] = hexWithoutHash;
+      return "| " + cols.join(" | ") + " |";
+    }).join("\n");
   }
   applyInlineStyle(el, style) {
     const css = {};
@@ -1508,7 +1312,10 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     if (updated !== content) {
       this._writingConfigFile = true;
       try {
-        await this.app.vault.process(file, () => updated);
+        await this.app.vault.process(
+          file,
+          (cur) => injectExamples(cur, this.settings.identifierStyles)
+        );
       } finally {
         this._writingConfigFile = false;
       }
@@ -1516,42 +1323,6 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     new import_obsidian3.Notice(
       `Loaded ${Object.keys(this.settings.identifierStyles).length} identifiers from ${path}`
     );
-  }
-  // ── Bibliography integration ─────────────────────────────────────────────
-  applyBibFileVisibility() {
-    var _a, _b, _c, _d;
-    if (this.settings.showBibFilesInBrowser) {
-      try {
-        (_b = (_a = this.app.vault).setConfig) == null ? void 0 : _b.call(_a, "showUnsupportedFiles", true);
-        (_d = (_c = this.app).saveLocalStorage) == null ? void 0 : _d.call(_c);
-      } catch (e) {
-        console.warn('Annotation Manager: enabling "Show all file types" failed', e);
-      }
-    }
-    this.updateStyleSheet();
-    this.app.workspace.updateOptions();
-  }
-  // Resolves the configured bib folder and returns its .bib files, sorted by
-  // name. Uses getFolderByPath rather than scanning the whole vault.
-  bibFilesInFolder() {
-    if (!this.settings.bibFolderPath) return [];
-    const folder = this.app.vault.getFolderByPath((0, import_obsidian3.normalizePath)(this.settings.bibFolderPath));
-    if (!folder) return [];
-    return folder.children.filter((f) => f instanceof import_obsidian3.TFile && f.extension === "bib").sort((a, b) => a.name.localeCompare(b.name));
-  }
-  async getBibEntries() {
-    const result = /* @__PURE__ */ new Map();
-    const bibFiles = this.bibFilesInFolder();
-    for (const file of bibFiles) {
-      try {
-        const content = await this.app.vault.cachedRead(file);
-        const entries = parseBibFile(content).sort((a, b) => a.key.localeCompare(b.key));
-        result.set(file.name, entries);
-      } catch (e) {
-        console.error(`Annotation Manager: failed to parse ${file.name}:`, e);
-      }
-    }
-    return result;
   }
   // ── Dataview integration ─────────────────────────────────────────────────
   setupDataviewIntegration() {
@@ -1587,8 +1358,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
           parent: a.parent,
           child: a.child,
           text: a.text,
-          line: a.line,
-          citation: a.citation
+          line: a.line
         }))
       );
     } else {
@@ -1598,124 +1368,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
 };
 // Annotation pattern: {={parent/child}content=}  or  {={parent}content=}
 _AnnotationManagerPlugin.READING_ANNOTATION = /\{=\{([^/}\s]+)(?:\/([^}\s]+))?}([\s\S]*?)=}/g;
-_AnnotationManagerPlugin.READING_CITATION = /\{=\/\{([^/}]+)\/=}/g;
 var AnnotationManagerPlugin = _AnnotationManagerPlugin;
-var BIB_VIEW_TYPE = "annotation-manager-bib";
-var BibFileView = class extends import_obsidian3.FileView {
-  constructor(leaf) {
-    super(leaf);
-  }
-  getViewType() {
-    return BIB_VIEW_TYPE;
-  }
-  getDisplayText() {
-    var _a, _b;
-    return (_b = (_a = this.file) == null ? void 0 : _a.name) != null ? _b : "BibTeX";
-  }
-  canAcceptExtension(extension) {
-    return extension === "bib";
-  }
-  async onLoadFile(_file) {
-    this.contentEl.empty();
-    this.contentEl.createDiv({ cls: "cc-bib-view-hint" }).createEl("p", { text: 'Use the "Insert citation" command to pick entries from this file.' });
-  }
-  async onUnloadFile(_file) {
-    this.contentEl.empty();
-  }
-};
-function getAnnotationIdentifierAtCursor(editor) {
-  var _a;
-  const cursor = editor.getCursor();
-  const line = editor.getLine(cursor.line);
-  const textBeforeCursor = line.slice(0, cursor.ch);
-  if (!textBeforeCursor.endsWith("=}")) return null;
-  const pattern = /\{=\{([^/}\s]+)(?:\/([^}\s]+))?}.*?=}/g;
-  let match;
-  while ((match = pattern.exec(textBeforeCursor)) !== null) {
-    if (match.index + match[0].length === textBeforeCursor.length) {
-      const parent = (_a = match[1]) != null ? _a : "";
-      const child = match[2];
-      return child ? `${parent}/${child}` : parent;
-    }
-  }
-  return null;
-}
-var BibFileSuggestModal = class _BibFileSuggestModal extends import_obsidian3.SuggestModal {
-  constructor(app, bibFiles, specificBibFileName, onChoose) {
-    var _a;
-    super(app);
-    this.bibFiles = bibFiles;
-    this.specificBibFileName = specificBibFileName;
-    this.onChoose = onChoose;
-    this.setPlaceholder("Select a .bib file\u2026");
-    this.specificFile = specificBibFileName ? (_a = bibFiles.find((f) => f.name === specificBibFileName)) != null ? _a : null : null;
-  }
-  getSuggestions(query) {
-    const q = query.toLowerCase();
-    const items = [];
-    const others = this.bibFiles.filter(
-      (f) => f !== this.specificFile && (!q || f.name.toLowerCase().includes(q))
-    );
-    if (this.specificFile && (!q || this.specificFile.name.toLowerCase().includes(q))) {
-      items.push({ kind: "file", file: this.specificFile, linked: true });
-      if (others.length > 0) items.push({ kind: "sep" });
-    }
-    items.push(...others.map((f) => ({ kind: "file", file: f, linked: false })));
-    return items;
-  }
-  renderSuggestion(item, el) {
-    if (item.kind === "sep") {
-      el.addClass("cc-bib-separator");
-      return;
-    }
-    const row = el.createDiv({ cls: "cc-suggest-row" });
-    row.createEl("span", { text: item.file.name, cls: "cc-suggest-id" });
-    if (item.linked) {
-      row.createEl("span", { text: "Linked", cls: "cc-suggest-badge" });
-    }
-  }
-  onChooseSuggestion(item) {
-    if (item.kind === "sep") {
-      window.setTimeout(
-        () => new _BibFileSuggestModal(
-          this.app,
-          this.bibFiles,
-          this.specificBibFileName,
-          this.onChoose
-        ).open(),
-        50
-      );
-      return;
-    }
-    this.onChoose(item.file);
-  }
-};
-var CitationSuggestModal = class extends import_obsidian3.SuggestModal {
-  constructor(app, entries, onChoose) {
-    super(app);
-    this.entries = entries;
-    this.onChoose = onChoose;
-    this.setPlaceholder("Select a citation\u2026");
-  }
-  getSuggestions(query) {
-    const q = query.toLowerCase();
-    if (!q) return this.entries;
-    return this.entries.filter(
-      (e) => e.key.toLowerCase().includes(q) || e.author.toLowerCase().includes(q) || e.title.toLowerCase().includes(q)
-    );
-  }
-  renderSuggestion(entry, el) {
-    const row = el.createDiv({ cls: "cc-cite-row" });
-    row.createEl("div", { text: entry.key, cls: "cc-cite-key" });
-    const meta = row.createDiv({ cls: "cc-cite-meta" });
-    if (entry.author) meta.createEl("span", { text: entry.author, cls: "cc-cite-author" });
-    if (entry.year) meta.createEl("span", { text: ` (${entry.year})`, cls: "cc-cite-year" });
-    if (entry.title) meta.createEl("span", { text: ` \u2014 ${entry.title}`, cls: "cc-cite-title" });
-  }
-  onChooseSuggestion(entry) {
-    this.onChoose(entry.key);
-  }
-};
 var IdentifierSuggestModal = class extends import_obsidian3.SuggestModal {
   constructor(app, plugin, onChoose) {
     super(app);

@@ -8,12 +8,11 @@
 [![CodeQL](https://github.com/jsglazer/annotation-manager/actions/workflows/codeql.yml/badge.svg)](https://github.com/jsglazer/annotation-manager/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jsglazer/annotation-manager/badge)](https://securityscorecards.dev/viewer/?uri=github.com/jsglazer/annotation-manager)
 
-Annotate text inline in Obsidian, view all annotations in a unified sidebar, style them with custom colors, query them with Dataview, and attach bibliographic citations from BibTeX files.
+Annotate text inline in Obsidian, view all annotations in a unified sidebar, style them with custom colors, and query them with Dataview.
 
 ### View all/some/none of the annotation markup
 
 <img src="text_source.png" width="600"/>
-<img src="text_previewCite.png" width="600"/>
 <img src="text_preview.png" width="600"/>
 <img src="dvjs.png" width="800"/>
 
@@ -24,8 +23,7 @@ Full documentation is in the [GitHub Wiki](https://github.com/jsglazer/annotatio
 - [Home](https://github.com/jsglazer/annotation-manager/wiki) — overview and quick start
 - [Annotations](https://github.com/jsglazer/annotation-manager/wiki/Annotations) — syntax, styling, sidebar, commands
 - [Configuration](https://github.com/jsglazer/annotation-manager/wiki/Configuration) — all settings, config file setup, and reading-mode color pickers
-- [Citations](https://github.com/jsglazer/annotation-manager/wiki/Citations) — BibTeX workflow, Zotero integration, settings
-- [DataviewJS Examples](https://github.com/jsglazer/annotation-manager/wiki/DataviewJS-Examples) — querying annotations and bibliography
+- [DataviewJS Examples](https://github.com/jsglazer/annotation-manager/wiki/DataviewJS-Examples) — querying annotations
 
 ---
 
@@ -35,7 +33,6 @@ Full documentation is in the [GitHub Wiki](https://github.com/jsglazer/annotatio
 - **Live Preview rendering** — delimiters and identifier are hidden; only the annotated text is shown, optionally styled
 - **Annotations sidebar** — collects all annotations vault-wide, grouped by identifier, with one-click navigation
 - **Custom styling** — assign font color, background color, and font size to any identifier or wildcard pattern
-- **Citations** — insert BibTeX citation keys from `.bib` files immediately after an annotation
 - **Dataview integration** — annotations are exposed as a `cc` field on each note's page object
 - **Config file support** — define identifier styles in a Markdown table in your vault; open the file in Reading Mode to get inline color pickers for instant color selection
 

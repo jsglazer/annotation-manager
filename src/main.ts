@@ -3,7 +3,6 @@ import {
 	debounce,
 	Editor,
 	EventRef,
-	FileView,
 	MarkdownView,
 	Menu,
 	MenuItem,
@@ -13,7 +12,6 @@ import {
 	setIcon,
 	SuggestModal,
 	TFile,
-	WorkspaceLeaf,
 } from 'obsidian';
 import {
 	AnnotationManagerSettings,
@@ -28,12 +26,8 @@ import {
 } from './settings';
 import { parseAnnotations, Annotation } from './parser';
 import { EditorView } from '@codemirror/view';
-import { createCommentViewPlugin, createCitationViewPlugin } from './decoration';
+import { createCommentViewPlugin } from './decoration';
 import { AnnotationSidebarView, SIDEBAR_VIEW_TYPE } from './sidebar';
-import { parseBibFile, BibEntry } from './bibtex';
-
-// CSS class toggled on <body> to hide .bib files in the file explorer.
-const HIDE_BIB_CLASS = 'cc-hide-bib-files';
 
 // ── Typed views over Obsidian's undocumented internal APIs ────────────────
 // These cast targets replace `any` so the rest of the code stays type-checked.
@@ -65,11 +59,6 @@ interface DataviewPlugin {
 
 interface AppInternals {
 	plugins?: { plugins?: Record<string, DataviewPlugin | undefined> };
-	saveLocalStorage?: () => void;
-}
-
-interface VaultInternals {
-	setConfig?: (key: string, value: unknown) => void;
 }
 
 interface MetadataCacheInternals {
@@ -83,7 +72,6 @@ export default class AnnotationManagerPlugin extends Plugin {
 	syntaxHidingEnabled = true; // hides {={id} and =} delimiters in LP / Reading View
 	identifierFormattingEnabled = true; // applies custom color to the bracket+identifier portion
 	textFormattingEnabled = true; // applies custom color to the annotation text content
-	citationVisibilityEnabled = true; // shows/hides {=/{key}/=} citation markers
 
 	lastUsedIdentifier: string | null = null;
 
@@ -98,16 +86,10 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
-		this.updateStyleSheet();
 
 		this.addSettingTab(new AnnotationManagerSettingTab(this.app, this));
 
-		// Register .bib file view so clicking .bib files stays in Obsidian
-		this.registerView(BIB_VIEW_TYPE, (leaf) => new BibFileView(leaf));
-		this.registerExtensions(['bib'], BIB_VIEW_TYPE);
-
 		this.registerEditorExtension(createCommentViewPlugin(this));
-		this.registerEditorExtension(createCitationViewPlugin(this));
 		this.registerMarkdownPostProcessor((el, ctx) => {
 			this.processReadingView(el);
 			if (
@@ -206,63 +188,6 @@ export default class AnnotationManagerPlugin extends Plugin {
 			},
 		});
 
-		this.addCommand({
-			id: 'toggle-citation-visibility',
-			name: 'Toggle citation visibility',
-			callback: () => {
-				this.citationVisibilityEnabled = !this.citationVisibilityEnabled;
-				this.bumpStyleVersion();
-				new Notice(`Citations ${this.citationVisibilityEnabled ? 'visible' : 'hidden'}`);
-			},
-		});
-
-		this.addCommand({
-			id: 'insert-citation',
-			name: 'Insert citation',
-			editorCallback: async (editor: Editor) => {
-				if (!this.settings.bibFolderPath) {
-					new Notice(
-						'Annotation Manager: set the bib files folder path in settings before inserting citations.',
-					);
-					return;
-				}
-
-				const bibFiles = this.bibFilesInFolder();
-
-				if (bibFiles.length === 0) {
-					new Notice(
-						`No .bib files found in "${this.settings.bibFolderPath}". Check the folder path in settings.`,
-					);
-					return;
-				}
-
-				// Capture the insert position now — the cursor may move (or the user may
-				// switch files) while the two modals below are open.
-				const insertPos = editor.getCursor();
-
-				// Determine annotation-specific .bib from cursor position
-				let specificBibFile: string | null = null;
-				const annotationId = getAnnotationIdentifierAtCursor(editor);
-				if (annotationId) {
-					const slashIdx = annotationId.indexOf('/');
-					const parent = slashIdx !== -1 ? annotationId.slice(0, slashIdx) : annotationId;
-					const child = slashIdx !== -1 ? annotationId.slice(slashIdx + 1) : '';
-					const style = resolvedStyle(parent, child, this.settings.identifierStyles);
-					specificBibFile = style?.bibFile || null;
-				}
-
-				new BibFileSuggestModal(this.app, bibFiles, specificBibFile, (selectedFile) => {
-					void (async () => {
-						const content = await this.app.vault.cachedRead(selectedFile);
-						const entries = parseBibFile(content).sort((a, b) => a.key.localeCompare(b.key));
-						new CitationSuggestModal(this.app, entries, (key) => {
-							editor.replaceRange(`{=/{${key}/=}`, insertPos);
-						}).open();
-					})();
-				}).open();
-			},
-		});
-
 		this.registerEvent(
 			this.app.workspace.on('editor-menu', (menu: Menu, editor: Editor) => {
 				const selected = editor.getSelection();
@@ -298,7 +223,6 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 			this.setupDataviewIntegration();
 			this.addRightSidebarButton();
-			this.applyBibFileVisibility();
 
 			// Open the AM sidebar in the right panel if it has never been opened
 			// so it appears as an accessible tab
@@ -346,10 +270,6 @@ export default class AnnotationManagerPlugin extends Plugin {
 				}
 			}),
 		);
-	}
-
-	onunload() {
-		activeDocument.body.removeClass(HIDE_BIB_CLASS);
 	}
 
 	async loadSettings() {
@@ -458,18 +378,9 @@ export default class AnnotationManagerPlugin extends Plugin {
 		}
 	}
 
-	// Per-identifier colors are applied as inline styles (editor decorations in
-	// decoration.ts, Reading View spans in processReadingView). The only global
-	// state left is the .bib-hiding toggle, expressed as a <body> class consumed
-	// by styles.css.
-	updateStyleSheet() {
-		activeDocument.body.toggleClass(HIDE_BIB_CLASS, !this.settings.showBibFilesInBrowser);
-	}
-
 	// Called by settings and toggle commands to rebuild styles and refresh all views.
 	bumpStyleVersion() {
 		this.styleVersion++;
-		this.updateStyleSheet();
 		this.app.workspace.updateOptions();
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			if (leaf.view instanceof MarkdownView) {
@@ -524,75 +435,39 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 	// Annotation pattern: {={parent/child}content=}  or  {={parent}content=}
 	private static readonly READING_ANNOTATION = /\{=\{([^/}\s]+)(?:\/([^}\s]+))?}([\s\S]*?)=}/g;
-	private static readonly READING_CITATION = /\{=\/\{([^/}]+)\/=}/g;
 
 	// Returns a fragment of mixed text + styled spans, or null when nothing in the
 	// text would be transformed (so the original text node is left untouched).
 	private buildReadingFragment(value: string): DocumentFragment | null {
+		if (!this.syntaxHidingEnabled) return null;
+
 		const frag = activeDocument.createDocumentFragment();
 		let changed = false;
 
-		if (this.syntaxHidingEnabled) {
-			const re = new RegExp(AnnotationManagerPlugin.READING_ANNOTATION.source, 'g');
-			let lastIndex = 0;
-			let m: RegExpExecArray | null;
-			while ((m = re.exec(value)) !== null) {
-				if (this.appendCitations(frag, value.slice(lastIndex, m.index))) changed = true;
-
-				const span = createSpan({ cls: 'cc-annotation' });
-				if (this.textFormattingEnabled) {
-					const style = resolvedStyle(m[1] ?? '', m[2] ?? '', this.settings.identifierStyles);
-					if (style) this.applyInlineStyle(span, style);
-				}
-				this.appendCitations(span, (m[3] ?? '').trim());
-				frag.appendChild(span);
-
-				lastIndex = m.index + m[0].length;
-				changed = true;
-			}
-			if (this.appendCitations(frag, value.slice(lastIndex))) changed = true;
-		} else {
-			// Brackets visible — leave annotations raw, but citations still apply.
-			if (this.appendCitations(frag, value)) changed = true;
-		}
-
-		return changed ? frag : null;
-	}
-
-	// Appends text to parent, wrapping/hiding any {=/{key}/=} citation markers.
-	// Returns true if any citation was transformed.
-	private appendCitations(parent: Node, text: string): boolean {
-		if (!text) return false;
-
-		const hide = !this.citationVisibilityEnabled;
-		const color = this.citationVisibilityEnabled && !!this.settings.citationColor;
-		if (!hide && !color) {
-			parent.appendChild(activeDocument.createTextNode(text));
-			return false;
-		}
-
-		const re = new RegExp(AnnotationManagerPlugin.READING_CITATION.source, 'g');
+		const re = new RegExp(AnnotationManagerPlugin.READING_ANNOTATION.source, 'g');
 		let lastIndex = 0;
-		let changed = false;
 		let m: RegExpExecArray | null;
-		while ((m = re.exec(text)) !== null) {
+		while ((m = re.exec(value)) !== null) {
 			if (m.index > lastIndex) {
-				parent.appendChild(activeDocument.createTextNode(text.slice(lastIndex, m.index)));
+				frag.appendChild(activeDocument.createTextNode(value.slice(lastIndex, m.index)));
 			}
-			if (hide) {
-				parent.appendChild(createSpan({ cls: 'cc-hide' }));
-			} else {
-				const span = createSpan({ cls: 'cc-citation', text: m[0] });
-				span.setCssStyles({ color: this.settings.citationColor });
-				parent.appendChild(span);
+
+			const span = createSpan({ cls: 'cc-annotation' });
+			if (this.textFormattingEnabled) {
+				const style = resolvedStyle(m[1] ?? '', m[2] ?? '', this.settings.identifierStyles);
+				if (style) this.applyInlineStyle(span, style);
 			}
+			span.appendChild(activeDocument.createTextNode((m[3] ?? '').trim()));
+			frag.appendChild(span);
+
 			lastIndex = m.index + m[0].length;
 			changed = true;
 		}
-		if (lastIndex < text.length) {
-			parent.appendChild(activeDocument.createTextNode(text.slice(lastIndex)));
+		if (lastIndex < value.length) {
+			frag.appendChild(activeDocument.createTextNode(value.slice(lastIndex)));
 		}
-		return changed;
+
+		return changed ? frag : null;
 	}
 
 	// ── Config-table color picker (reading view of AMConfig.md) ─────────────
@@ -811,52 +686,6 @@ export default class AnnotationManagerPlugin extends Plugin {
 		);
 	}
 
-	// ── Bibliography integration ─────────────────────────────────────────────
-
-	applyBibFileVisibility(): void {
-		if (this.settings.showBibFilesInBrowser) {
-			try {
-				// Enable Obsidian's "Show all file types" so .bib files appear in the file explorer.
-				// This modifies a global Obsidian setting — noted in the README.
-				(this.app.vault as unknown as VaultInternals).setConfig?.('showUnsupportedFiles', true);
-				(this.app as unknown as AppInternals).saveLocalStorage?.();
-			} catch (e) {
-				console.warn('Annotation Manager: enabling "Show all file types" failed', e);
-			}
-		}
-		// CSS hiding for showBibFilesInBrowser=false is handled in updateStyleSheet
-		this.updateStyleSheet();
-		this.app.workspace.updateOptions();
-	}
-
-	// Resolves the configured bib folder and returns its .bib files, sorted by
-	// name. Uses getFolderByPath rather than scanning the whole vault.
-	bibFilesInFolder(): TFile[] {
-		if (!this.settings.bibFolderPath) return [];
-		const folder = this.app.vault.getFolderByPath(normalizePath(this.settings.bibFolderPath));
-		if (!folder) return [];
-		return folder.children
-			.filter((f): f is TFile => f instanceof TFile && f.extension === 'bib')
-			.sort((a, b) => a.name.localeCompare(b.name));
-	}
-
-	async getBibEntries(): Promise<Map<string, BibEntry[]>> {
-		const result = new Map<string, BibEntry[]>();
-		const bibFiles = this.bibFilesInFolder();
-
-		for (const file of bibFiles) {
-			try {
-				const content = await this.app.vault.cachedRead(file);
-				const entries = parseBibFile(content).sort((a, b) => a.key.localeCompare(b.key));
-				result.set(file.name, entries);
-			} catch (e) {
-				console.error(`Annotation Manager: failed to parse ${file.name}:`, e);
-			}
-		}
-
-		return result;
-	}
-
 	// ── Dataview integration ─────────────────────────────────────────────────
 
 	private setupDataviewIntegration() {
@@ -896,170 +725,11 @@ export default class AnnotationManagerPlugin extends Plugin {
 					child: a.child,
 					text: a.text,
 					line: a.line,
-					citation: a.citation,
 				})),
 			);
 		} else {
 			page.fields.delete('cc');
 		}
-	}
-}
-
-// ── Bib file view (prevents .bib files from opening in external apps) ─────
-
-const BIB_VIEW_TYPE = 'annotation-manager-bib';
-
-class BibFileView extends FileView {
-	constructor(leaf: WorkspaceLeaf) {
-		super(leaf);
-	}
-
-	getViewType(): string {
-		return BIB_VIEW_TYPE;
-	}
-	getDisplayText(): string {
-		return this.file?.name ?? 'BibTeX';
-	}
-	canAcceptExtension(extension: string): boolean {
-		return extension === 'bib';
-	}
-
-	async onLoadFile(_file: TFile): Promise<void> {
-		this.contentEl.empty();
-		this.contentEl
-			.createDiv({ cls: 'cc-bib-view-hint' })
-			.createEl('p', { text: 'Use the "Insert citation" command to pick entries from this file.' });
-	}
-
-	async onUnloadFile(_file: TFile): Promise<void> {
-		this.contentEl.empty();
-	}
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────
-
-function getAnnotationIdentifierAtCursor(editor: Editor): string | null {
-	const cursor = editor.getCursor();
-	const line = editor.getLine(cursor.line);
-	const textBeforeCursor = line.slice(0, cursor.ch);
-
-	if (!textBeforeCursor.endsWith('=}')) return null;
-
-	// Find the annotation whose closing =} lands exactly at the cursor
-	const pattern = /\{=\{([^/}\s]+)(?:\/([^}\s]+))?}.*?=}/g;
-	let match: RegExpExecArray | null;
-	while ((match = pattern.exec(textBeforeCursor)) !== null) {
-		if (match.index + match[0].length === textBeforeCursor.length) {
-			const parent = match[1] ?? '';
-			const child = match[2];
-			return child ? `${parent}/${child}` : parent;
-		}
-	}
-	return null;
-}
-
-// ── Bib file picker modal ──────────────────────────────────────────────────
-
-type BibFileItem = { kind: 'file'; file: TFile; linked: boolean } | { kind: 'sep' };
-
-class BibFileSuggestModal extends SuggestModal<BibFileItem> {
-	private specificFile: TFile | null;
-
-	constructor(
-		app: App,
-		private bibFiles: TFile[],
-		private specificBibFileName: string | null,
-		private onChoose: (file: TFile) => void,
-	) {
-		super(app);
-		this.setPlaceholder('Select a .bib file…');
-		this.specificFile = specificBibFileName
-			? (bibFiles.find((f) => f.name === specificBibFileName) ?? null)
-			: null;
-	}
-
-	getSuggestions(query: string): BibFileItem[] {
-		const q = query.toLowerCase();
-		const items: BibFileItem[] = [];
-
-		const others = this.bibFiles.filter(
-			(f) => f !== this.specificFile && (!q || f.name.toLowerCase().includes(q)),
-		);
-
-		if (this.specificFile && (!q || this.specificFile.name.toLowerCase().includes(q))) {
-			items.push({ kind: 'file', file: this.specificFile, linked: true });
-			if (others.length > 0) items.push({ kind: 'sep' });
-		}
-
-		items.push(...others.map((f) => ({ kind: 'file' as const, file: f, linked: false })));
-		return items;
-	}
-
-	renderSuggestion(item: BibFileItem, el: HTMLElement): void {
-		if (item.kind === 'sep') {
-			el.addClass('cc-bib-separator');
-			return;
-		}
-		const row = el.createDiv({ cls: 'cc-suggest-row' });
-		row.createEl('span', { text: item.file.name, cls: 'cc-suggest-id' });
-		if (item.linked) {
-			row.createEl('span', { text: 'Linked', cls: 'cc-suggest-badge' });
-		}
-	}
-
-	onChooseSuggestion(item: BibFileItem): void {
-		if (item.kind === 'sep') {
-			// Separator accidentally selected — reopen the modal
-			window.setTimeout(
-				() =>
-					new BibFileSuggestModal(
-						this.app,
-						this.bibFiles,
-						this.specificBibFileName,
-						this.onChoose,
-					).open(),
-				50,
-			);
-			return;
-		}
-		this.onChoose(item.file);
-	}
-}
-
-// ── Citation picker modal ─────────────────────────────────────────────────
-
-class CitationSuggestModal extends SuggestModal<BibEntry> {
-	constructor(
-		app: App,
-		private entries: BibEntry[],
-		private onChoose: (key: string) => void,
-	) {
-		super(app);
-		this.setPlaceholder('Select a citation…');
-	}
-
-	getSuggestions(query: string): BibEntry[] {
-		const q = query.toLowerCase();
-		if (!q) return this.entries;
-		return this.entries.filter(
-			(e) =>
-				e.key.toLowerCase().includes(q) ||
-				e.author.toLowerCase().includes(q) ||
-				e.title.toLowerCase().includes(q),
-		);
-	}
-
-	renderSuggestion(entry: BibEntry, el: HTMLElement): void {
-		const row = el.createDiv({ cls: 'cc-cite-row' });
-		row.createEl('div', { text: entry.key, cls: 'cc-cite-key' });
-		const meta = row.createDiv({ cls: 'cc-cite-meta' });
-		if (entry.author) meta.createEl('span', { text: entry.author, cls: 'cc-cite-author' });
-		if (entry.year) meta.createEl('span', { text: ` (${entry.year})`, cls: 'cc-cite-year' });
-		if (entry.title) meta.createEl('span', { text: ` — ${entry.title}`, cls: 'cc-cite-title' });
-	}
-
-	onChooseSuggestion(entry: BibEntry): void {
-		this.onChoose(entry.key);
 	}
 }
 

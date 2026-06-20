@@ -21,11 +21,10 @@ version.
 
 ## Scope & threat model
 
-Annotation Manager runs inside Obsidian and processes note content, a Markdown
-config table, and `.bib` files from the user's own vault. Areas considered in
-review:
+Annotation Manager runs inside Obsidian and processes note content and a
+Markdown config table from the user's own vault. Areas considered in review:
 
-- Note/config/`.bib` content is treated as untrusted input. Rendering builds DOM
+- Note/config content is treated as untrusted input. Rendering builds DOM
   nodes (no `innerHTML`); user-supplied colors and font sizes are validated
   before they reach inline styles; parser keys are guarded against prototype
   pollution.
