@@ -1,14 +1,8 @@
 # Annotation Manager
 
-[![GitHub release](https://img.shields.io/github/v/release/jsglazer/annotation-manager?logo=github)](https://github.com/jsglazer/annotation-manager/releases)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/jsglazer/annotation-manager/blob/main/LICENSE)
-[![Made with Claude](https://img.shields.io/badge/Made_with-Claude-D97756?logo=anthropic)](https://claude.ai)
-[![Gemini Flash Antigravity](https://img.shields.io/badge/Gemini%20Flash-Antigravity-4f86f7?logo=google-gemini&logoColor=white)](https://github.com/google-gemini)
-[![CI](https://github.com/jsglazer/annotation-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/jsglazer/annotation-manager/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/jsglazer/annotation-manager/actions/workflows/codeql.yml/badge.svg)](https://github.com/jsglazer/annotation-manager/actions/workflows/codeql.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jsglazer/annotation-manager/badge)](https://securityscorecards.dev/viewer/?uri=github.com/jsglazer/annotation-manager)
+[![GitHub release](https://img.shields.io/github/v/release/jsglazer/annotation-manager?logo=github)](https://github.com/jsglazer/annotation-manager/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/jsglazer/annotation-manager/blob/main/LICENSE) [![Made with Claude](https://img.shields.io/badge/Made_with-Claude-D97756?logo=anthropic)](https://claude.ai) [![Gemini Flash Antigravity](https://img.shields.io/badge/Gemini%20Flash-Antigravity-4f86f7?logo=google-gemini&logoColor=white)](https://github.com/google-gemini) [![CI](https://github.com/jsglazer/annotation-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/jsglazer/annotation-manager/actions/workflows/ci.yml) [![CodeQL](https://github.com/jsglazer/annotation-manager/actions/workflows/codeql.yml/badge.svg)](https://github.com/jsglazer/annotation-manager/actions/workflows/codeql.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jsglazer/annotation-manager/badge)](https://securityscorecards.dev/viewer/?uri=github.com/jsglazer/annotation-manager)
 
-Annotate text inline in Obsidian, view all annotations in a unified sidebar, style them with custom colors, and query them with Dataview.
+Annotate text inline in Obsidian, view all annotations for the current note in a sidebar, style them with custom colors, attach freeform tagged comments, and query annotations with Dataview.
 
 ### View all/some/none of the annotation markup
 
@@ -31,8 +25,11 @@ Full documentation is in the [GitHub Wiki](https://github.com/jsglazer/annotatio
 
 - **Inline annotations** — wrap any text in `{={parent/child}your note=}` to tag it with an identifier
 - **Live Preview rendering** — delimiters and identifier are hidden; only the annotated text is shown, optionally styled
-- **Annotations sidebar** — collects all annotations vault-wide, grouped by identifier, with one-click navigation
-- **Custom styling** — assign font color, background color, and font size to any identifier or wildcard pattern
+- **Annotations sidebar** — lists the annotations in the note you currently have open, grouped by identifier, with one-click navigation; switches automatically as you move between notes
+- **Comments** — attach freeform notes with `{@your comment@}`, independent of annotations; a comment placed immediately after an annotation (no space) inherits its tag, or tag one explicitly with `{@{parent/child}your comment@}`
+- **Comments sidebar** — lists the current note's comments grouped by tag, with an untagged "No Tag" section, and the same one-click navigation as the Annotations sidebar
+- **Custom styling** — assign font color, background color, and font size to any identifier or wildcard pattern; comments reuse the same identifier styles when tagged
+- **Visibility controls** — a dedicated Settings → Visibility tab (and matching commands) to show/hide annotation and comment brackets, formatting, and — for comments — the entire comment
 - **Dataview integration** — annotations are exposed as a `cc` field on each note's page object
 - **Config file support** — define identifier styles in a Markdown table in your vault; open the file in Reading Mode to get inline color pickers for instant color selection
 
@@ -42,21 +39,22 @@ Full documentation is in the [GitHub Wiki](https://github.com/jsglazer/annotatio
 
 ```
 The function {={note}converges in O(n log n)=} for all inputs.
-This approach {={math/hot}maximizes the posterior=} under the prior.
+This approach {={math/hot}maximizes the posterior=} under the prior.{@double-check this against the 2023 paper@}
 ```
 
 1. Write an annotation using `{={identifier}text=}` syntax
-2. Open the sidebar via the **message-square** ribbon icon
-3. Add styling under **Settings → Annotation Manager → Add Identifier**
+2. Add a comment with the **Add comment** command, or type `{@your comment@}` directly
+3. Open the sidebars via the ribbon icon or the **Show annotations sidebar** / **Show comments sidebar** commands
+4. Add styling under **Settings → Annotation Manager → Add Identifier**, and adjust what's shown under **Settings → Annotation Manager → Visibility**
 
 ---
 
 ## Notes
 
 - Tested with the built-in and Minimal themes only
-- Annotations work in both Live Preview and Source Mode
-- Avoid `=}` inside annotation text — the parser truncates at the first one it finds
-- Do not place annotations inside inline code or fenced code blocks
+- Annotations and comments work in both Live Preview and Source Mode
+- Avoid `=}` inside annotation text, or `@}` inside comment text — the parser truncates at the first one it finds
+- Do not place annotations or comments inside inline code or fenced code blocks
 
 ---
 
