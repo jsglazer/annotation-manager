@@ -24,10 +24,18 @@ import {
 	renderConfigTable,
 	resolvedStyle,
 } from './settings';
-import { parseAnnotations, Annotation } from './parser';
+import {
+	parseAnnotations,
+	Annotation,
+	parseComments,
+	resolveCommentTags,
+	ParsedComment,
+	COMMENT_PATTERN,
+} from './parser';
 import { EditorView } from '@codemirror/view';
-import { createCommentViewPlugin } from './decoration';
+import { createAnnotationViewPlugin, createCommentDecorationViewPlugin } from './decoration';
 import { AnnotationSidebarView, SIDEBAR_VIEW_TYPE } from './sidebar';
+import { CommentSidebarView, COMMENT_SIDEBAR_VIEW_TYPE } from './commentSidebar';
 
 // ── Typed views over Obsidian's undocumented internal APIs ────────────────
 // These cast targets replace `any` so the rest of the code stays type-checked.
@@ -68,16 +76,23 @@ interface MetadataCacheInternals {
 export default class AnnotationManagerPlugin extends Plugin {
 	settings!: AnnotationManagerSettings;
 	styleVersion = 0;
-	// Four independent display toggles (all ON by default)
+	// Annotation display toggles
 	syntaxHidingEnabled = true; // hides {={id} and =} delimiters in LP / Reading View
 	identifierFormattingEnabled = true; // applies custom color to the bracket+identifier portion
 	textFormattingEnabled = true; // applies custom color to the annotation text content
+
+	// Comment display toggles
+	commentBracketsHiddenEnabled = true; // hides {@ and @} delimiters in LP / Reading View
+	commentBracketFormattingEnabled = true; // applies tag color to the bracket portion (LP only)
+	commentsHiddenEnabled = false; // hides the entire comment — brackets and text
+	commentsFormattingEnabled = true; // applies tag color to the comment text content
 
 	lastUsedIdentifier: string | null = null;
 
 	readonly editorViews = new Set<EditorView>();
 
 	private fileAnnotations: Map<string, Annotation[]> = new Map();
+	private fileComments: Map<string, ParsedComment[]> = new Map();
 	private debouncedRefresh = debounce(() => this._refreshSidebar(), 150, true);
 	private debouncedReloadConfig = debounce(() => {
 		void this.reloadConfigFile();
@@ -89,7 +104,8 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 		this.addSettingTab(new AnnotationManagerSettingTab(this.app, this));
 
-		this.registerEditorExtension(createCommentViewPlugin(this));
+		this.registerEditorExtension(createAnnotationViewPlugin(this));
+		this.registerEditorExtension(createCommentDecorationViewPlugin(this));
 		this.registerMarkdownPostProcessor((el, ctx) => {
 			this.processReadingView(el);
 			if (
@@ -101,6 +117,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 		});
 
 		this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new AnnotationSidebarView(leaf, this));
+		this.registerView(COMMENT_SIDEBAR_VIEW_TYPE, (leaf) => new CommentSidebarView(leaf, this));
 
 		// Left ribbon icon
 		this.addRibbonIcon('message-square', 'Annotation Manager: show annotations', () => {
@@ -111,6 +128,36 @@ export default class AnnotationManagerPlugin extends Plugin {
 			id: 'show-annotations-sidebar',
 			name: 'Show annotations sidebar',
 			callback: () => this.toggleSidebar(),
+		});
+
+		this.addCommand({
+			id: 'show-comments-sidebar',
+			name: 'Show comments sidebar',
+			callback: () => this.toggleCommentSidebar(),
+		});
+
+		this.addCommand({
+			id: 'add-comment',
+			name: 'Add comment',
+			editorCallback: (editor: Editor) => {
+				const from = editor.getCursor('from');
+				const fromOffset = editor.posToOffset(from);
+				const annotations = parseAnnotations(editor.getValue());
+				const adjacentToAnnotation = annotations.some((a) => a.to === fromOffset);
+				const needsSpacer = adjacentToAnnotation && !this.settings.commentAutoInheritAdjacentTag;
+				const prefix = needsSpacer ? ' ' : '';
+
+				const selected = editor.getSelection();
+				if (selected) {
+					editor.replaceSelection(`${prefix}{@${selected}@}`);
+				} else {
+					const cursor = editor.getCursor();
+					const snippet = `${prefix}{@@}`;
+					editor.replaceRange(snippet, cursor);
+					// Place cursor between the two '@' symbols
+					editor.setCursor({ line: cursor.line, ch: cursor.ch + snippet.length - 2 });
+				}
+			},
 		});
 
 		this.addCommand({
@@ -159,6 +206,8 @@ export default class AnnotationManagerPlugin extends Plugin {
 			name: 'Toggle bracket/identifier visibility',
 			callback: () => {
 				this.syntaxHidingEnabled = !this.syntaxHidingEnabled;
+				this.settings.syntaxHidingEnabled = this.syntaxHidingEnabled;
+				void this.saveSettings();
 				this.bumpStyleVersion();
 				new Notice(`Annotation brackets ${this.syntaxHidingEnabled ? 'hidden' : 'visible'}`);
 			},
@@ -169,6 +218,8 @@ export default class AnnotationManagerPlugin extends Plugin {
 			name: 'Toggle bracket/identifier formatting',
 			callback: () => {
 				this.identifierFormattingEnabled = !this.identifierFormattingEnabled;
+				this.settings.identifierFormattingEnabled = this.identifierFormattingEnabled;
+				void this.saveSettings();
 				this.bumpStyleVersion();
 				new Notice(
 					`Annotation bracket/identifier formatting ${this.identifierFormattingEnabled ? 'enabled' : 'disabled'}`,
@@ -181,9 +232,63 @@ export default class AnnotationManagerPlugin extends Plugin {
 			name: 'Toggle text formatting',
 			callback: () => {
 				this.textFormattingEnabled = !this.textFormattingEnabled;
+				this.settings.textFormattingEnabled = this.textFormattingEnabled;
+				void this.saveSettings();
 				this.bumpStyleVersion();
 				new Notice(
 					`Annotation text formatting ${this.textFormattingEnabled ? 'enabled' : 'disabled'}`,
+				);
+			},
+		});
+
+		this.addCommand({
+			id: 'toggle-comment-brackets',
+			name: 'Toggle comment bracket visibility',
+			callback: () => {
+				this.commentBracketsHiddenEnabled = !this.commentBracketsHiddenEnabled;
+				this.settings.commentBracketsHiddenEnabled = this.commentBracketsHiddenEnabled;
+				void this.saveSettings();
+				this.bumpStyleVersion();
+				new Notice(`Comment brackets ${this.commentBracketsHiddenEnabled ? 'hidden' : 'visible'}`);
+			},
+		});
+
+		this.addCommand({
+			id: 'toggle-comment-bracket-formatting',
+			name: 'Toggle comment bracket formatting',
+			callback: () => {
+				this.commentBracketFormattingEnabled = !this.commentBracketFormattingEnabled;
+				this.settings.commentBracketFormattingEnabled = this.commentBracketFormattingEnabled;
+				void this.saveSettings();
+				this.bumpStyleVersion();
+				new Notice(
+					`Comment bracket formatting ${this.commentBracketFormattingEnabled ? 'enabled' : 'disabled'}`,
+				);
+			},
+		});
+
+		this.addCommand({
+			id: 'toggle-comments-visibility',
+			name: 'Toggle comment visibility',
+			callback: () => {
+				this.commentsHiddenEnabled = !this.commentsHiddenEnabled;
+				this.settings.commentsHiddenEnabled = this.commentsHiddenEnabled;
+				void this.saveSettings();
+				this.bumpStyleVersion();
+				new Notice(`Comments ${this.commentsHiddenEnabled ? 'hidden' : 'visible'}`);
+			},
+		});
+
+		this.addCommand({
+			id: 'toggle-comments-formatting',
+			name: 'Toggle comment text formatting',
+			callback: () => {
+				this.commentsFormattingEnabled = !this.commentsFormattingEnabled;
+				this.settings.commentsFormattingEnabled = this.commentsFormattingEnabled;
+				void this.saveSettings();
+				this.bumpStyleVersion();
+				new Notice(
+					`Comment text formatting ${this.commentsFormattingEnabled ? 'enabled' : 'disabled'}`,
 				);
 			},
 		});
@@ -255,6 +360,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 			this.app.vault.on('delete', (file) => {
 				if (file instanceof TFile) {
 					this.fileAnnotations.delete(file.path);
+					this.fileComments.delete(file.path);
 					this.debouncedRefresh();
 				}
 			}),
@@ -264,10 +370,18 @@ export default class AnnotationManagerPlugin extends Plugin {
 			this.app.vault.on('rename', async (file, oldPath) => {
 				if (file instanceof TFile && file.extension === 'md') {
 					this.fileAnnotations.delete(oldPath);
+					this.fileComments.delete(oldPath);
 					await this.indexFile(file);
 					this.injectDataviewMetadata(file);
 					this.debouncedRefresh();
 				}
+			}),
+		);
+
+		// Both sidebars are scoped to the active file — refresh when it changes.
+		this.registerEvent(
+			this.app.workspace.on('file-open', () => {
+				this.debouncedRefresh();
 			}),
 		);
 	}
@@ -278,6 +392,13 @@ export default class AnnotationManagerPlugin extends Plugin {
 			DEFAULT_SETTINGS,
 			(await this.loadData()) as Partial<AnnotationManagerSettings>,
 		);
+		this.syntaxHidingEnabled = this.settings.syntaxHidingEnabled;
+		this.identifierFormattingEnabled = this.settings.identifierFormattingEnabled;
+		this.textFormattingEnabled = this.settings.textFormattingEnabled;
+		this.commentBracketsHiddenEnabled = this.settings.commentBracketsHiddenEnabled;
+		this.commentBracketFormattingEnabled = this.settings.commentBracketFormattingEnabled;
+		this.commentsHiddenEnabled = this.settings.commentsHiddenEnabled;
+		this.commentsFormattingEnabled = this.settings.commentsFormattingEnabled;
 	}
 
 	async saveSettings() {
@@ -286,6 +407,10 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 	getAllAnnotations(): Map<string, Annotation[]> {
 		return this.fileAnnotations;
+	}
+
+	getAllComments(): Map<string, ParsedComment[]> {
+		return this.fileComments;
 	}
 
 	refreshSidebar(): void {
@@ -298,17 +423,30 @@ export default class AnnotationManagerPlugin extends Plugin {
 				leaf.view.render();
 			}
 		});
+		this.app.workspace.getLeavesOfType(COMMENT_SIDEBAR_VIEW_TYPE).forEach((leaf) => {
+			if (leaf.view instanceof CommentSidebarView) {
+				leaf.view.render();
+			}
+		});
 	}
 
 	private async toggleSidebar(): Promise<void> {
-		const existing = this.app.workspace.getLeavesOfType(SIDEBAR_VIEW_TYPE);
+		await this.toggleSidebarView(SIDEBAR_VIEW_TYPE);
+	}
+
+	private async toggleCommentSidebar(): Promise<void> {
+		await this.toggleSidebarView(COMMENT_SIDEBAR_VIEW_TYPE);
+	}
+
+	private async toggleSidebarView(viewType: string): Promise<void> {
+		const existing = this.app.workspace.getLeavesOfType(viewType);
 		if (existing.length && existing[0]) {
 			await this.app.workspace.revealLeaf(existing[0]);
 			return;
 		}
 		const leaf = this.app.workspace.getRightLeaf(false);
 		if (leaf) {
-			await leaf.setViewState({ type: SIDEBAR_VIEW_TYPE });
+			await leaf.setViewState({ type: viewType });
 			await this.app.workspace.revealLeaf(leaf);
 		}
 	}
@@ -408,14 +546,16 @@ export default class AnnotationManagerPlugin extends Plugin {
 	}
 
 	private processReadingView(el: HTMLElement) {
-		if (!el.textContent?.includes('{=')) return;
+		const text = el.textContent ?? '';
+		if (!text.includes('{=') && !text.includes('{@')) return;
 
 		const walker = activeDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
 		const toReplace: Text[] = [];
 		let node: Node | null;
 
 		while ((node = walker.nextNode())) {
-			if ((node as Text).nodeValue?.includes('{=')) {
+			const value = (node as Text).nodeValue;
+			if (value?.includes('{=') || value?.includes('{@')) {
 				toReplace.push(node as Text);
 			}
 		}
@@ -436,32 +576,79 @@ export default class AnnotationManagerPlugin extends Plugin {
 	// Annotation pattern: {={parent/child}content=}  or  {={parent}content=}
 	private static readonly READING_ANNOTATION = /\{=\{([^/}\s]+)(?:\/([^}\s]+))?}([\s\S]*?)=}/g;
 
+	// Combined pattern: annotation groups are 1-3, comment groups are 4-6.
+	// Exactly one side's groups are defined per match (m[1] !== undefined => annotation).
+	private static readonly READING_COMBINED = new RegExp(
+		`${AnnotationManagerPlugin.READING_ANNOTATION.source}|${COMMENT_PATTERN.source}`,
+		'g',
+	);
+
 	// Returns a fragment of mixed text + styled spans, or null when nothing in the
 	// text would be transformed (so the original text node is left untouched).
 	private buildReadingFragment(value: string): DocumentFragment | null {
-		if (!this.syntaxHidingEnabled) return null;
+		const doAnnotations = this.syntaxHidingEnabled;
+		const doComments = this.commentBracketsHiddenEnabled || this.commentsHiddenEnabled;
+		if (!doAnnotations && !doComments) return null;
 
 		const frag = activeDocument.createDocumentFragment();
 		let changed = false;
-
-		const re = new RegExp(AnnotationManagerPlugin.READING_ANNOTATION.source, 'g');
 		let lastIndex = 0;
+		let lastAnnotationEnd = -1;
+		let lastAnnotationTag: { parent: string; child: string } | null = null;
+
+		const re = new RegExp(AnnotationManagerPlugin.READING_COMBINED.source, 'g');
 		let m: RegExpExecArray | null;
 		while ((m = re.exec(value)) !== null) {
-			if (m.index > lastIndex) {
-				frag.appendChild(activeDocument.createTextNode(value.slice(lastIndex, m.index)));
-			}
+			const isAnnotation = m[1] !== undefined;
 
-			const span = createSpan({ cls: 'cc-annotation' });
-			if (this.textFormattingEnabled) {
-				const style = resolvedStyle(m[1] ?? '', m[2] ?? '', this.settings.identifierStyles);
-				if (style) this.applyInlineStyle(span, style);
-			}
-			span.appendChild(activeDocument.createTextNode((m[3] ?? '').trim()));
-			frag.appendChild(span);
+			if (isAnnotation) {
+				const parent = m[1] ?? '';
+				const child = m[2] ?? '';
+				const annEnd = m.index + m[0].length;
 
-			lastIndex = m.index + m[0].length;
-			changed = true;
+				if (doAnnotations) {
+					if (m.index > lastIndex) {
+						frag.appendChild(activeDocument.createTextNode(value.slice(lastIndex, m.index)));
+					}
+					const span = createSpan({ cls: 'cc-annotation' });
+					if (this.textFormattingEnabled) {
+						const style = resolvedStyle(parent, child, this.settings.identifierStyles);
+						if (style) this.applyInlineStyle(span, style);
+					}
+					span.appendChild(activeDocument.createTextNode((m[3] ?? '').trim()));
+					frag.appendChild(span);
+					lastIndex = annEnd;
+					changed = true;
+				}
+
+				// Tracked for comment tag inheritance regardless of doAnnotations.
+				lastAnnotationEnd = annEnd;
+				lastAnnotationTag = { parent, child };
+			} else {
+				let parent = m[4] ?? '';
+				let child = m[5] ?? '';
+				if (!parent && m.index === lastAnnotationEnd && lastAnnotationTag) {
+					parent = lastAnnotationTag.parent;
+					child = lastAnnotationTag.child;
+				}
+
+				if (doComments) {
+					if (m.index > lastIndex) {
+						frag.appendChild(activeDocument.createTextNode(value.slice(lastIndex, m.index)));
+					}
+					if (!this.commentsHiddenEnabled) {
+						const span = createSpan({ cls: 'cc-comment' });
+						if (this.commentsFormattingEnabled && parent) {
+							const style = resolvedStyle(parent, child, this.settings.identifierStyles);
+							if (style) this.applyInlineStyle(span, style);
+						}
+						span.appendChild(activeDocument.createTextNode((m[6] ?? '').trim()));
+						frag.appendChild(span);
+					}
+					lastIndex = m.index + m[0].length;
+					changed = true;
+				}
+			}
 		}
 		if (lastIndex < value.length) {
 			frag.appendChild(activeDocument.createTextNode(value.slice(lastIndex)));
@@ -614,7 +801,9 @@ export default class AnnotationManagerPlugin extends Plugin {
 	private async indexFile(file: TFile) {
 		try {
 			const content = await this.app.vault.cachedRead(file);
-			this.fileAnnotations.set(file.path, parseAnnotations(content));
+			const annotations = parseAnnotations(content);
+			this.fileAnnotations.set(file.path, annotations);
+			this.fileComments.set(file.path, resolveCommentTags(parseComments(content), annotations));
 		} catch (e) {
 			// One unreadable file must not abort indexAllFiles' Promise.all
 			console.warn(`Annotation Manager: failed to index ${file.path}`, e);

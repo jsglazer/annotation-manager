@@ -1,4 +1,5 @@
-.cc-annotation {
+.cc-annotation,
+.cc-comment {
 	cursor: text;
 	border-radius: 2px;
 	padding: 0 1px;
@@ -151,18 +152,9 @@
 	background-color: var(--background-modifier-hover);
 }
 
-.cc-sidebar-filename {
-	font-size: 0.8em;
-	color: var(--text-normal);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
 .cc-sidebar-text {
-	font-size: 0.72em;
+	font-size: 0.8em;
 	color: var(--text-muted);
-	padding-left: 12px;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -319,4 +311,34 @@
 	background: transparent;
 	margin-right: 4px;
 	vertical-align: middle;
+}
+
+/* ── Settings tab bar ─────────────────────────────────────────────────────── */
+
+.cc-tab-bar {
+	display: flex;
+	gap: 4px;
+	margin-bottom: 16px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.cc-tab-btn {
+	font-size: 0.9em;
+	padding: 6px 14px;
+	border: none;
+	border-bottom: 2px solid transparent;
+	border-radius: 4px 4px 0 0;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.cc-tab-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.cc-tab-btn-active {
+	color: var(--text-accent);
+	border-bottom-color: var(--interactive-accent);
 }

@@ -1,6 +1,7 @@
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
 import { RangeSetBuilder } from '@codemirror/state';
 import { IdentifierStyle, isValidFontSize, resolvedClass, resolvedStyle } from './settings';
+import { COMMENT_PATTERN } from './parser';
 import AnnotationManagerPlugin from './main';
 
 // New syntax: {={parent/child}content=}  or  {={parent}content=}
@@ -169,7 +170,7 @@ function buildDecorations(view: EditorView, plugin: AnnotationManagerPlugin): Bu
 	return { decorations: builder.finish(), annotationRanges };
 }
 
-export function createCommentViewPlugin(plugin: AnnotationManagerPlugin) {
+export function createAnnotationViewPlugin(plugin: AnnotationManagerPlugin) {
 	return ViewPlugin.fromClass(
 		class {
 			decorations: DecorationSet;
@@ -213,6 +214,152 @@ export function createCommentViewPlugin(plugin: AnnotationManagerPlugin) {
 
 			destroy() {
 				plugin.editorViews.delete(this.cmView);
+			}
+		},
+		{ decorations: (v) => v.decorations },
+	);
+}
+
+// ── Comments ({@comment@} / {@{parent/child}comment@}) ─────────────────────
+
+interface BuiltCommentDecorations {
+	decorations: DecorationSet;
+	commentRanges: Array<[number, number]>;
+}
+
+function buildCommentDecorations(
+	view: EditorView,
+	plugin: AnnotationManagerPlugin,
+): BuiltCommentDecorations {
+	const builder = new RangeSetBuilder<Decoration>();
+	const commentRanges: Array<[number, number]> = [];
+	const { selection } = view.state;
+	const inLP = isLivePreview(view);
+
+	for (const { from, to } of view.visibleRanges) {
+		const text = view.state.doc.sliceString(from, to);
+		const codeRanges = getCodeRanges(text);
+
+		// Annotation end-offsets in this chunk, for zero-space tag inheritance.
+		// Annotation decorations themselves are rendered by the annotation ViewPlugin.
+		const annotationEnds = new Map<number, { parent: string; child: string }>();
+		const annRe = new RegExp(PATTERN.source, 'g');
+		let am: RegExpExecArray | null;
+		while ((am = annRe.exec(text)) !== null) {
+			const aStart = am.index;
+			const aEnd = aStart + (am[0]?.length ?? 0);
+			if (isInCodeRange(aStart, aEnd, codeRanges)) continue;
+			annotationEnds.set(aEnd, { parent: am[1] ?? '', child: am[2] ?? '' });
+		}
+
+		const re = new RegExp(COMMENT_PATTERN.source, 'g');
+		let match: RegExpExecArray | null;
+
+		while ((match = re.exec(text)) !== null) {
+			const relStart = match.index;
+			const fullLen = match[0]?.length ?? 0;
+			const relEnd = relStart + fullLen;
+
+			if (isInCodeRange(relStart, relEnd, codeRanges)) continue;
+
+			const start = from + relStart;
+			const end = from + relEnd;
+			commentRanges.push([start, end]);
+
+			let parent = match[1] ?? '';
+			let child = match[2] ?? '';
+			const content = match[3] ?? '';
+			if (!parent) {
+				const inherited = annotationEnds.get(relStart);
+				if (inherited) {
+					parent = inherited.parent;
+					child = inherited.child;
+				}
+			}
+
+			const cls = resolvedClass(parent, child, plugin.settings.identifierStyles);
+			const style = resolvedStyle(parent, child, plugin.settings.identifierStyles);
+
+			// prefixLen = length of the opening delimiter ({@ or {@{parent/child})
+			const prefixLen = fullLen - content.length - 2; // 2 = length of @}
+			const contentStart = start + prefixLen;
+			const suffixStart = end - 2;
+
+			const cursorInside = selection.ranges.some((r) => r.from < end && r.to > start);
+			const hideGate = inLP && !cursorInside;
+
+			if (hideGate && plugin.commentsHiddenEnabled) {
+				// Master toggle: hide the entire comment, delimiters and text alike
+				builder.add(start, end, HIDE);
+			} else if (hideGate && plugin.commentBracketsHiddenEnabled) {
+				builder.add(start, contentStart, HIDE);
+				if (contentStart < suffixStart) {
+					const textMark =
+						plugin.commentsFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
+					addContentMarks(builder, contentStart, suffixStart, content, textMark);
+				}
+				builder.add(suffixStart, end, HIDE);
+			} else {
+				const idMark =
+					plugin.commentBracketFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
+				const textMark =
+					plugin.commentsFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
+
+				if (contentStart > start) builder.add(start, contentStart, idMark);
+
+				if (suffixStart > contentStart) {
+					if (inLP && cursorInside) {
+						addContentMarks(builder, contentStart, suffixStart, content, textMark);
+					} else {
+						builder.add(contentStart, suffixStart, textMark);
+					}
+				}
+
+				if (end > suffixStart) builder.add(suffixStart, end, idMark);
+			}
+		}
+	}
+
+	return { decorations: builder.finish(), commentRanges };
+}
+
+export function createCommentDecorationViewPlugin(plugin: AnnotationManagerPlugin) {
+	return ViewPlugin.fromClass(
+		class {
+			decorations: DecorationSet;
+			private commentRanges: Array<[number, number]>;
+			private lastStyleVersion: number;
+
+			constructor(view: EditorView) {
+				this.lastStyleVersion = plugin.styleVersion;
+				const built = buildCommentDecorations(view, plugin);
+				this.decorations = built.decorations;
+				this.commentRanges = built.commentRanges;
+			}
+
+			update(update: ViewUpdate) {
+				const styleChanged = plugin.styleVersion !== this.lastStyleVersion;
+				const needsRebuild =
+					update.docChanged ||
+					update.viewportChanged ||
+					styleChanged ||
+					(update.selectionSet && this.selectionTouchesComment(update));
+				if (needsRebuild) {
+					this.lastStyleVersion = plugin.styleVersion;
+					const built = buildCommentDecorations(update.view, plugin);
+					this.decorations = built.decorations;
+					this.commentRanges = built.commentRanges;
+				}
+			}
+
+			// Selection-only updates matter only when the cursor enters or leaves a
+			// comment (the cursorInside reveal logic); skip the rebuild otherwise.
+			private selectionTouchesComment(update: ViewUpdate): boolean {
+				const touches = (ranges: readonly { from: number; to: number }[]) =>
+					ranges.some((r) => this.commentRanges.some(([a, b]) => r.from < b && r.to > a));
+				return (
+					touches(update.startState.selection.ranges) || touches(update.state.selection.ranges)
+				);
 			}
 		},
 		{ decorations: (v) => v.decorations },

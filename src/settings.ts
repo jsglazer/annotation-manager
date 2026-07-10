@@ -13,12 +13,39 @@ export interface AnnotationManagerSettings {
 	identifierStyles: Record<string, IdentifierStyle>;
 	configSource: 'settings' | 'file';
 	configFilePath: string;
+
+	// Annotation visibility toggles
+	syntaxHidingEnabled: boolean;
+	identifierFormattingEnabled: boolean;
+	textFormattingEnabled: boolean;
+
+	// Comment visibility toggles
+	commentBracketsHiddenEnabled: boolean;
+	commentBracketFormattingEnabled: boolean;
+	commentsHiddenEnabled: boolean;
+	commentsFormattingEnabled: boolean;
+
+	// When the "Add comment" command runs immediately after (zero-space) an
+	// annotation, insert a leading space by default so the comment does NOT
+	// inherit that annotation's tag, unless this is enabled.
+	commentAutoInheritAdjacentTag: boolean;
 }
 
 export const DEFAULT_SETTINGS: AnnotationManagerSettings = {
 	identifierStyles: {},
 	configSource: 'settings',
 	configFilePath: 'OccConfig.md',
+
+	syntaxHidingEnabled: true,
+	identifierFormattingEnabled: true,
+	textFormattingEnabled: true,
+
+	commentBracketsHiddenEnabled: true,
+	commentBracketFormattingEnabled: true,
+	commentsHiddenEnabled: false,
+	commentsFormattingEnabled: true,
+
+	commentAutoInheritAdjacentTag: false,
 };
 
 export const EMPTY_STYLE: IdentifierStyle = {
@@ -339,6 +366,7 @@ function attachTypeahead(
 export class AnnotationManagerSettingTab extends PluginSettingTab {
 	plugin: AnnotationManagerPlugin;
 	private pendingIdentifier = '';
+	private activeTab: 'general' | 'visibility' = 'general';
 
 	constructor(app: App, plugin: AnnotationManagerPlugin) {
 		super(app, plugin);
@@ -352,6 +380,27 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+
+		const tabBar = containerEl.createDiv('cc-tab-bar');
+		const tabs: Array<{ id: 'general' | 'visibility'; label: string }> = [
+			{ id: 'general', label: 'General' },
+			{ id: 'visibility', label: 'Visibility' },
+		];
+		for (const tab of tabs) {
+			const btn = tabBar.createEl('button', {
+				text: tab.label,
+				cls: 'cc-tab-btn' + (this.activeTab === tab.id ? ' cc-tab-btn-active' : ''),
+			});
+			btn.addEventListener('click', () => {
+				this.activeTab = tab.id;
+				this.display();
+			});
+		}
+
+		if (this.activeTab === 'visibility') {
+			this.renderVisibilityTab(containerEl);
+			return;
+		}
 
 		const infoPanel = containerEl.createDiv({ cls: 'cc-info-panel' });
 		const p1 = infoPanel.createEl('p');
@@ -396,6 +445,117 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		} else {
 			this.renderSettingsSourceUI(containerEl);
 		}
+	}
+
+	private renderVisibilityTab(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('Annotations').setHeading();
+
+		this.renderToggle(
+			containerEl,
+			'Hide brackets',
+			'Hide the {={id} and =} delimiters in Live Preview',
+			() => this.plugin.syntaxHidingEnabled,
+			(v) => {
+				this.plugin.syntaxHidingEnabled = v;
+				this.plugin.settings.syntaxHidingEnabled = v;
+			},
+		);
+		this.renderToggle(
+			containerEl,
+			'Bracket / identifier formatting',
+			'Apply identifier colors to the bracket/identifier portion',
+			() => this.plugin.identifierFormattingEnabled,
+			(v) => {
+				this.plugin.identifierFormattingEnabled = v;
+				this.plugin.settings.identifierFormattingEnabled = v;
+			},
+		);
+		this.renderToggle(
+			containerEl,
+			'Text formatting',
+			'Apply identifier colors to the annotation text content',
+			() => this.plugin.textFormattingEnabled,
+			(v) => {
+				this.plugin.textFormattingEnabled = v;
+				this.plugin.settings.textFormattingEnabled = v;
+			},
+		);
+
+		new Setting(containerEl).setName('Comments').setHeading();
+
+		this.renderToggle(
+			containerEl,
+			'Hide brackets',
+			'Hide the {@ and @} delimiters in Live Preview',
+			() => this.plugin.commentBracketsHiddenEnabled,
+			(v) => {
+				this.plugin.commentBracketsHiddenEnabled = v;
+				this.plugin.settings.commentBracketsHiddenEnabled = v;
+			},
+		);
+		this.renderToggle(
+			containerEl,
+			'Bracket formatting',
+			"Apply the comment's tag color to the bracket portion",
+			() => this.plugin.commentBracketFormattingEnabled,
+			(v) => {
+				this.plugin.commentBracketFormattingEnabled = v;
+				this.plugin.settings.commentBracketFormattingEnabled = v;
+			},
+		);
+		this.renderToggle(
+			containerEl,
+			'Hide comments',
+			'Hide the entire comment — brackets and text — in Live Preview',
+			() => this.plugin.commentsHiddenEnabled,
+			(v) => {
+				this.plugin.commentsHiddenEnabled = v;
+				this.plugin.settings.commentsHiddenEnabled = v;
+			},
+		);
+		this.renderToggle(
+			containerEl,
+			'Comments formatting',
+			"Apply the comment's tag color to the comment text",
+			() => this.plugin.commentsFormattingEnabled,
+			(v) => {
+				this.plugin.commentsFormattingEnabled = v;
+				this.plugin.settings.commentsFormattingEnabled = v;
+			},
+		);
+
+		new Setting(containerEl).setName('Comment tagging').setHeading();
+		new Setting(containerEl)
+			.setName('Auto-inherit adjacent tag')
+			.setDesc(
+				'When the "Add comment" command runs immediately after an annotation, ' +
+					'inherit its tag (zero-space) instead of defaulting to "No Tag" (one space)',
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.commentAutoInheritAdjacentTag).onChange(async (v) => {
+					this.plugin.settings.commentAutoInheritAdjacentTag = v;
+					await this.plugin.saveSettings();
+				}),
+			);
+	}
+
+	private renderToggle(
+		containerEl: HTMLElement,
+		name: string,
+		desc: string,
+		getValue: () => boolean,
+		setValue: (v: boolean) => void,
+	): void {
+		new Setting(containerEl)
+			.setName(name)
+			.setDesc(desc)
+			.addToggle((toggle) =>
+				toggle.setValue(getValue()).onChange(async (v) => {
+					setValue(v);
+					await this.plugin.saveSettings();
+					this.plugin.bumpStyleVersion();
+				}),
+			);
 	}
 
 	private renderFileSourceUI(containerEl: HTMLElement): void {

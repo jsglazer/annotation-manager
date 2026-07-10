@@ -22,7 +22,7 @@ __export(main_exports, {
   default: () => AnnotationManagerPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian3 = require("obsidian");
+var import_obsidian5 = require("obsidian");
 
 // src/settings.ts
 var import_obsidian = require("obsidian");
@@ -36,7 +36,15 @@ function isUnsafeKey(key) {
 var DEFAULT_SETTINGS = {
   identifierStyles: {},
   configSource: "settings",
-  configFilePath: "OccConfig.md"
+  configFilePath: "OccConfig.md",
+  syntaxHidingEnabled: true,
+  identifierFormattingEnabled: true,
+  textFormattingEnabled: true,
+  commentBracketsHiddenEnabled: true,
+  commentBracketFormattingEnabled: true,
+  commentsHiddenEnabled: false,
+  commentsFormattingEnabled: true,
+  commentAutoInheritAdjacentTag: false
 };
 var EMPTY_STYLE = {
   fontSize: "",
@@ -253,6 +261,7 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
   constructor(app, plugin) {
     super(app, plugin);
     this.pendingIdentifier = "";
+    this.activeTab = "general";
     this.plugin = plugin;
   }
   hide() {
@@ -261,6 +270,25 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
   display() {
     const { containerEl } = this;
     containerEl.empty();
+    const tabBar = containerEl.createDiv("cc-tab-bar");
+    const tabs = [
+      { id: "general", label: "General" },
+      { id: "visibility", label: "Visibility" }
+    ];
+    for (const tab of tabs) {
+      const btn = tabBar.createEl("button", {
+        text: tab.label,
+        cls: "cc-tab-btn" + (this.activeTab === tab.id ? " cc-tab-btn-active" : "")
+      });
+      btn.addEventListener("click", () => {
+        this.activeTab = tab.id;
+        this.display();
+      });
+    }
+    if (this.activeTab === "visibility") {
+      this.renderVisibilityTab(containerEl);
+      return;
+    }
     const infoPanel = containerEl.createDiv({ cls: "cc-info-panel" });
     const p1 = infoPanel.createEl("p");
     p1.appendText("If you encounter errors or have questions, please submit an Issue on the ");
@@ -293,6 +321,98 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     } else {
       this.renderSettingsSourceUI(containerEl);
     }
+  }
+  renderVisibilityTab(containerEl) {
+    new import_obsidian.Setting(containerEl).setName("Annotations").setHeading();
+    this.renderToggle(
+      containerEl,
+      "Hide brackets",
+      "Hide the {={id} and =} delimiters in Live Preview",
+      () => this.plugin.syntaxHidingEnabled,
+      (v) => {
+        this.plugin.syntaxHidingEnabled = v;
+        this.plugin.settings.syntaxHidingEnabled = v;
+      }
+    );
+    this.renderToggle(
+      containerEl,
+      "Bracket / identifier formatting",
+      "Apply identifier colors to the bracket/identifier portion",
+      () => this.plugin.identifierFormattingEnabled,
+      (v) => {
+        this.plugin.identifierFormattingEnabled = v;
+        this.plugin.settings.identifierFormattingEnabled = v;
+      }
+    );
+    this.renderToggle(
+      containerEl,
+      "Text formatting",
+      "Apply identifier colors to the annotation text content",
+      () => this.plugin.textFormattingEnabled,
+      (v) => {
+        this.plugin.textFormattingEnabled = v;
+        this.plugin.settings.textFormattingEnabled = v;
+      }
+    );
+    new import_obsidian.Setting(containerEl).setName("Comments").setHeading();
+    this.renderToggle(
+      containerEl,
+      "Hide brackets",
+      "Hide the {@ and @} delimiters in Live Preview",
+      () => this.plugin.commentBracketsHiddenEnabled,
+      (v) => {
+        this.plugin.commentBracketsHiddenEnabled = v;
+        this.plugin.settings.commentBracketsHiddenEnabled = v;
+      }
+    );
+    this.renderToggle(
+      containerEl,
+      "Bracket formatting",
+      "Apply the comment's tag color to the bracket portion",
+      () => this.plugin.commentBracketFormattingEnabled,
+      (v) => {
+        this.plugin.commentBracketFormattingEnabled = v;
+        this.plugin.settings.commentBracketFormattingEnabled = v;
+      }
+    );
+    this.renderToggle(
+      containerEl,
+      "Hide comments",
+      "Hide the entire comment \u2014 brackets and text \u2014 in Live Preview",
+      () => this.plugin.commentsHiddenEnabled,
+      (v) => {
+        this.plugin.commentsHiddenEnabled = v;
+        this.plugin.settings.commentsHiddenEnabled = v;
+      }
+    );
+    this.renderToggle(
+      containerEl,
+      "Comments formatting",
+      "Apply the comment's tag color to the comment text",
+      () => this.plugin.commentsFormattingEnabled,
+      (v) => {
+        this.plugin.commentsFormattingEnabled = v;
+        this.plugin.settings.commentsFormattingEnabled = v;
+      }
+    );
+    new import_obsidian.Setting(containerEl).setName("Comment tagging").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Auto-inherit adjacent tag").setDesc(
+      'When the "Add comment" command runs immediately after an annotation, inherit its tag (zero-space) instead of defaulting to "No Tag" (one space)'
+    ).addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.commentAutoInheritAdjacentTag).onChange(async (v) => {
+        this.plugin.settings.commentAutoInheritAdjacentTag = v;
+        await this.plugin.saveSettings();
+      })
+    );
+  }
+  renderToggle(containerEl, name, desc, getValue, setValue) {
+    new import_obsidian.Setting(containerEl).setName(name).setDesc(desc).addToggle(
+      (toggle) => toggle.setValue(getValue()).onChange(async (v) => {
+        setValue(v);
+        await this.plugin.saveSettings();
+        this.plugin.bumpStyleVersion();
+      })
+    );
   }
   renderFileSourceUI(containerEl) {
     let configPathInput = null;
@@ -499,6 +619,7 @@ var VaultFileSuggestModal = class extends import_obsidian.FuzzySuggestModal {
 
 // src/parser.ts
 var PATTERN = /\{=\{([^/}\s]+)(?:\/([^}\s]+))?}([\s\S]*?)=}/g;
+var COMMENT_PATTERN = /\{@(?:\{([^/}\s]+)(?:\/([^}\s]+))?\})?([\s\S]*?)@\}/g;
 function getCodeRanges(content) {
   const ranges = [];
   const fenced = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$/gm;
@@ -536,6 +657,36 @@ function parseAnnotations(content) {
     });
   }
   return results;
+}
+function parseComments(content) {
+  var _a, _b, _c, _d, _e;
+  const codeRanges = getCodeRanges(content);
+  const results = [];
+  const re = new RegExp(COMMENT_PATTERN.source, "g");
+  let match;
+  while ((match = re.exec(content)) !== null) {
+    const from = match.index;
+    const to = match.index + ((_b = (_a = match[0]) == null ? void 0 : _a.length) != null ? _b : 0);
+    if (isInCodeRange(from, to, codeRanges)) continue;
+    const line = content.slice(0, from).split("\n").length;
+    results.push({
+      parent: (_c = match[1]) != null ? _c : "",
+      child: (_d = match[2]) != null ? _d : "",
+      text: ((_e = match[3]) != null ? _e : "").trim(),
+      from,
+      to,
+      line
+    });
+  }
+  return results;
+}
+function resolveCommentTags(comments, annotations) {
+  return comments.map((c) => {
+    if (c.parent) return c;
+    const source = annotations.find((a) => a.to === c.from);
+    if (!source) return c;
+    return { ...c, parent: source.parent, child: source.child };
+  });
 }
 
 // src/decoration.ts
@@ -644,7 +795,7 @@ function buildDecorations(view, plugin) {
   }
   return { decorations: builder.finish(), annotationRanges };
 }
-function createCommentViewPlugin(plugin) {
+function createAnnotationViewPlugin(plugin) {
   return import_view.ViewPlugin.fromClass(
     class {
       constructor(view) {
@@ -678,11 +829,208 @@ function createCommentViewPlugin(plugin) {
     { decorations: (v) => v.decorations }
   );
 }
+function buildCommentDecorations(view, plugin) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+  const builder = new import_state.RangeSetBuilder();
+  const commentRanges = [];
+  const { selection } = view.state;
+  const inLP = isLivePreview(view);
+  for (const { from, to } of view.visibleRanges) {
+    const text = view.state.doc.sliceString(from, to);
+    const codeRanges = getCodeRanges2(text);
+    const annotationEnds = /* @__PURE__ */ new Map();
+    const annRe = new RegExp(PATTERN2.source, "g");
+    let am;
+    while ((am = annRe.exec(text)) !== null) {
+      const aStart = am.index;
+      const aEnd = aStart + ((_b = (_a = am[0]) == null ? void 0 : _a.length) != null ? _b : 0);
+      if (isInCodeRange2(aStart, aEnd, codeRanges)) continue;
+      annotationEnds.set(aEnd, { parent: (_c = am[1]) != null ? _c : "", child: (_d = am[2]) != null ? _d : "" });
+    }
+    const re = new RegExp(COMMENT_PATTERN.source, "g");
+    let match;
+    while ((match = re.exec(text)) !== null) {
+      const relStart = match.index;
+      const fullLen = (_f = (_e = match[0]) == null ? void 0 : _e.length) != null ? _f : 0;
+      const relEnd = relStart + fullLen;
+      if (isInCodeRange2(relStart, relEnd, codeRanges)) continue;
+      const start = from + relStart;
+      const end = from + relEnd;
+      commentRanges.push([start, end]);
+      let parent = (_g = match[1]) != null ? _g : "";
+      let child = (_h = match[2]) != null ? _h : "";
+      const content = (_i = match[3]) != null ? _i : "";
+      if (!parent) {
+        const inherited = annotationEnds.get(relStart);
+        if (inherited) {
+          parent = inherited.parent;
+          child = inherited.child;
+        }
+      }
+      const cls = resolvedClass(parent, child, plugin.settings.identifierStyles);
+      const style = resolvedStyle(parent, child, plugin.settings.identifierStyles);
+      const prefixLen = fullLen - content.length - 2;
+      const contentStart = start + prefixLen;
+      const suffixStart = end - 2;
+      const cursorInside = selection.ranges.some((r) => r.from < end && r.to > start);
+      const hideGate = inLP && !cursorInside;
+      if (hideGate && plugin.commentsHiddenEnabled) {
+        builder.add(start, end, HIDE);
+      } else if (hideGate && plugin.commentBracketsHiddenEnabled) {
+        builder.add(start, contentStart, HIDE);
+        if (contentStart < suffixStart) {
+          const textMark = plugin.commentsFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
+          addContentMarks(builder, contentStart, suffixStart, content, textMark);
+        }
+        builder.add(suffixStart, end, HIDE);
+      } else {
+        const idMark = plugin.commentBracketFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
+        const textMark = plugin.commentsFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
+        if (contentStart > start) builder.add(start, contentStart, idMark);
+        if (suffixStart > contentStart) {
+          if (inLP && cursorInside) {
+            addContentMarks(builder, contentStart, suffixStart, content, textMark);
+          } else {
+            builder.add(contentStart, suffixStart, textMark);
+          }
+        }
+        if (end > suffixStart) builder.add(suffixStart, end, idMark);
+      }
+    }
+  }
+  return { decorations: builder.finish(), commentRanges };
+}
+function createCommentDecorationViewPlugin(plugin) {
+  return import_view.ViewPlugin.fromClass(
+    class {
+      constructor(view) {
+        this.lastStyleVersion = plugin.styleVersion;
+        const built = buildCommentDecorations(view, plugin);
+        this.decorations = built.decorations;
+        this.commentRanges = built.commentRanges;
+      }
+      update(update) {
+        const styleChanged = plugin.styleVersion !== this.lastStyleVersion;
+        const needsRebuild = update.docChanged || update.viewportChanged || styleChanged || update.selectionSet && this.selectionTouchesComment(update);
+        if (needsRebuild) {
+          this.lastStyleVersion = plugin.styleVersion;
+          const built = buildCommentDecorations(update.view, plugin);
+          this.decorations = built.decorations;
+          this.commentRanges = built.commentRanges;
+        }
+      }
+      // Selection-only updates matter only when the cursor enters or leaves a
+      // comment (the cursorInside reveal logic); skip the rebuild otherwise.
+      selectionTouchesComment(update) {
+        const touches = (ranges) => ranges.some((r) => this.commentRanges.some(([a, b]) => r.from < b && r.to > a));
+        return touches(update.startState.selection.ranges) || touches(update.state.selection.ranges);
+      }
+    },
+    { decorations: (v) => v.decorations }
+  );
+}
 
 // src/sidebar.ts
+var import_obsidian3 = require("obsidian");
+
+// src/sidebarShared.ts
 var import_obsidian2 = require("obsidian");
+function renderGroupedSidebar(app, root, filePath, sections, expandedSections, emptyMessage) {
+  root.empty();
+  root.addClass("cc-sidebar");
+  if (!filePath || sections.length === 0) {
+    root.createEl("p", { text: emptyMessage, cls: "cc-sidebar-empty" });
+    return;
+  }
+  const controls = root.createDiv("cc-sidebar-controls");
+  const expandAllBtn = controls.createEl("button", {
+    text: "Expand all",
+    cls: "cc-sidebar-ctrl-btn"
+  });
+  const collapseAllBtn = controls.createEl("button", {
+    text: "Collapse all",
+    cls: "cc-sidebar-ctrl-btn"
+  });
+  const sectionMeta = [];
+  for (const { key, entries } of sections) {
+    const section = root.createDiv("cc-sidebar-section");
+    const header = section.createDiv("cc-sidebar-header");
+    const isExpanded = expandedSections.has(key);
+    const arrowEl = header.createEl("span", {
+      text: isExpanded ? "\u25BE" : "\u25B8",
+      cls: "cc-sidebar-arrow"
+    });
+    header.createEl("span", { text: key, cls: "cc-sidebar-id" });
+    header.createEl("span", { text: `${entries.length}`, cls: "cc-sidebar-count" });
+    const itemsEl = section.createDiv("cc-sidebar-items");
+    itemsEl.toggleClass("cc-collapsed", !isExpanded);
+    sectionMeta.push({ key, itemsEl, arrowEl });
+    header.addEventListener("click", () => {
+      const nowExpanded = !expandedSections.has(key);
+      if (nowExpanded) {
+        expandedSections.add(key);
+      } else {
+        expandedSections.delete(key);
+      }
+      itemsEl.toggleClass("cc-collapsed", !nowExpanded);
+      arrowEl.setText(nowExpanded ? "\u25BE" : "\u25B8");
+    });
+    for (const entry of entries) {
+      const item = itemsEl.createDiv("cc-sidebar-item");
+      const words = entry.text.split(/\s+/).filter(Boolean);
+      const excerpt = words.length === 0 ? "(empty)" : words.slice(0, 3).join(" ") + (words.length > 3 ? "..." : "");
+      item.createEl("span", {
+        text: `${excerpt} (${entry.line})`,
+        cls: "cc-sidebar-text"
+      });
+      item.addEventListener("click", () => {
+        void jumpToLine(app, filePath, entry.line);
+      });
+    }
+  }
+  expandAllBtn.addEventListener("click", () => {
+    for (const { key, itemsEl, arrowEl } of sectionMeta) {
+      expandedSections.add(key);
+      itemsEl.toggleClass("cc-collapsed", false);
+      arrowEl.setText("\u25BE");
+    }
+  });
+  collapseAllBtn.addEventListener("click", () => {
+    for (const { key, itemsEl, arrowEl } of sectionMeta) {
+      expandedSections.delete(key);
+      itemsEl.toggleClass("cc-collapsed", true);
+      arrowEl.setText("\u25B8");
+    }
+  });
+}
+async function jumpToLine(app, filePath, line) {
+  const file = app.vault.getAbstractFileByPath(filePath);
+  if (!(file instanceof import_obsidian2.TFile)) return;
+  const existing = app.workspace.getLeavesOfType("markdown").find((l) => {
+    var _a;
+    return l.view instanceof import_obsidian2.MarkdownView && ((_a = l.view.file) == null ? void 0 : _a.path) === filePath;
+  });
+  let leaf;
+  if (existing) {
+    leaf = existing;
+    await app.workspace.revealLeaf(leaf);
+  } else {
+    leaf = app.workspace.getLeaf(false);
+    await leaf.openFile(file);
+  }
+  await new Promise((r) => window.setTimeout(r, 50));
+  const view = leaf.view;
+  if (view instanceof import_obsidian2.MarkdownView) {
+    const pos = { line: Math.max(0, line - 1), ch: 0 };
+    view.editor.setCursor(pos);
+    view.editor.scrollIntoView({ from: pos, to: pos }, true);
+    view.setEphemeralState({ line: pos.line });
+  }
+}
+
+// src/sidebar.ts
 var SIDEBAR_VIEW_TYPE = "annotation-manager-sidebar";
-var AnnotationSidebarView = class extends import_obsidian2.ItemView {
+var AnnotationSidebarView = class extends import_obsidian3.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.expandedSections = /* @__PURE__ */ new Set();
@@ -701,136 +1049,108 @@ var AnnotationSidebarView = class extends import_obsidian2.ItemView {
     this.render();
   }
   render() {
-    var _a, _b;
+    var _a;
     const root = this.containerEl.children[1];
-    root.empty();
-    root.addClass("cc-sidebar");
-    const allAnnotations = this.plugin.getAllAnnotations();
+    const file = this.app.workspace.getActiveFile();
+    const filePath = file && file.extension === "md" ? file.path : null;
+    const annotations = filePath ? (_a = this.plugin.getAllAnnotations().get(filePath)) != null ? _a : [] : [];
     const byId = /* @__PURE__ */ new Map();
-    for (const [filePath, anns] of allAnnotations) {
-      for (const ann of anns) {
-        const key = ann.child ? `${ann.parent}/${ann.child}` : ann.parent;
-        if (!byId.has(key)) byId.set(key, []);
-        byId.get(key).push({ filePath, text: ann.text, from: ann.from, line: ann.line });
-      }
+    for (const ann of annotations) {
+      const key = ann.child ? `${ann.parent}/${ann.child}` : ann.parent;
+      if (!byId.has(key)) byId.set(key, []);
+      byId.get(key).push({ text: ann.text, line: ann.line });
     }
-    if (byId.size === 0) {
-      root.createEl("p", { text: "No annotations found.", cls: "cc-sidebar-empty" });
-      return;
+    const sections = [...byId.keys()].sort().map((key) => ({ key, entries: byId.get(key) }));
+    renderGroupedSidebar(
+      this.app,
+      root,
+      filePath,
+      sections,
+      this.expandedSections,
+      filePath ? "No annotations found in this note." : "Open a note to see its annotations."
+    );
+  }
+};
+
+// src/commentSidebar.ts
+var import_obsidian4 = require("obsidian");
+var COMMENT_SIDEBAR_VIEW_TYPE = "annotation-manager-comment-sidebar";
+var NO_TAG_KEY = "No Tag";
+var CommentSidebarView = class extends import_obsidian4.ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.expandedSections = /* @__PURE__ */ new Set();
+    this.plugin = plugin;
+  }
+  getViewType() {
+    return COMMENT_SIDEBAR_VIEW_TYPE;
+  }
+  getDisplayText() {
+    return "Comments";
+  }
+  getIcon() {
+    return "message-circle";
+  }
+  async onOpen() {
+    this.render();
+  }
+  render() {
+    var _a;
+    const root = this.containerEl.children[1];
+    const file = this.app.workspace.getActiveFile();
+    const filePath = file && file.extension === "md" ? file.path : null;
+    const comments = filePath ? (_a = this.plugin.getAllComments().get(filePath)) != null ? _a : [] : [];
+    const byId = /* @__PURE__ */ new Map();
+    const noTag = [];
+    for (const c of comments) {
+      if (!c.parent) {
+        noTag.push({ text: c.text, line: c.line });
+        continue;
+      }
+      const key = c.child ? `${c.parent}/${c.child}` : c.parent;
+      if (!byId.has(key)) byId.set(key, []);
+      byId.get(key).push({ text: c.text, line: c.line });
     }
-    const controls = root.createDiv("cc-sidebar-controls");
-    const expandAllBtn = controls.createEl("button", {
-      text: "Expand all",
-      cls: "cc-sidebar-ctrl-btn"
-    });
-    const collapseAllBtn = controls.createEl("button", {
-      text: "Collapse all",
-      cls: "cc-sidebar-ctrl-btn"
-    });
-    const sectionMeta = [];
-    for (const key of [...byId.keys()].sort()) {
-      const entries = byId.get(key);
-      const section = root.createDiv("cc-sidebar-section");
-      const header = section.createDiv("cc-sidebar-header");
-      const isExpanded = this.expandedSections.has(key);
-      const arrowEl = header.createEl("span", {
-        text: isExpanded ? "\u25BE" : "\u25B8",
-        cls: "cc-sidebar-arrow"
-      });
-      header.createEl("span", {
-        text: `${key}`,
-        cls: "cc-sidebar-id"
-      });
-      header.createEl("span", {
-        text: `${entries.length}`,
-        cls: "cc-sidebar-count"
-      });
-      const itemsEl = section.createDiv("cc-sidebar-items");
-      itemsEl.toggleClass("cc-collapsed", !isExpanded);
-      sectionMeta.push({ key, itemsEl, arrowEl });
-      header.addEventListener("click", () => {
-        const nowExpanded = !this.expandedSections.has(key);
-        if (nowExpanded) {
-          this.expandedSections.add(key);
-        } else {
-          this.expandedSections.delete(key);
-        }
-        itemsEl.toggleClass("cc-collapsed", !nowExpanded);
-        arrowEl.setText(nowExpanded ? "\u25BE" : "\u25B8");
-      });
-      for (const entry of entries) {
-        const item = itemsEl.createDiv("cc-sidebar-item");
-        const fileName = (_b = (_a = entry.filePath.split("/").pop()) == null ? void 0 : _a.replace(/\.md$/, "")) != null ? _b : entry.filePath;
-        item.createEl("span", { text: fileName, cls: "cc-sidebar-filename" });
-        const words = entry.text.split(/\s+/).filter(Boolean);
-        const excerpt = words.length === 0 ? "(empty)" : words.slice(0, 3).join(" ") + (words.length > 3 ? "..." : "");
-        item.createEl("span", {
-          text: `${excerpt}(${entry.line})`,
-          cls: "cc-sidebar-text"
-        });
-        item.addEventListener("click", () => {
-          void (async () => {
-            const file = this.app.vault.getAbstractFileByPath(entry.filePath);
-            if (!(file instanceof import_obsidian2.TFile)) return;
-            const existing = this.app.workspace.getLeavesOfType("markdown").find((l) => {
-              var _a2;
-              return l.view instanceof import_obsidian2.MarkdownView && ((_a2 = l.view.file) == null ? void 0 : _a2.path) === entry.filePath;
-            });
-            let leaf;
-            if (existing) {
-              leaf = existing;
-              await this.app.workspace.revealLeaf(leaf);
-            } else {
-              leaf = this.app.workspace.getLeaf(false);
-              await leaf.openFile(file);
-            }
-            await new Promise((r) => window.setTimeout(r, 50));
-            const view = leaf.view;
-            if (view instanceof import_obsidian2.MarkdownView) {
-              const line = Math.max(0, entry.line - 1);
-              const pos = { line, ch: 0 };
-              view.editor.setCursor(pos);
-              view.editor.scrollIntoView({ from: pos, to: pos }, true);
-              view.setEphemeralState({ line });
-            }
-          })();
-        });
-      }
-    }
-    expandAllBtn.addEventListener("click", () => {
-      for (const { key, itemsEl, arrowEl } of sectionMeta) {
-        this.expandedSections.add(key);
-        itemsEl.toggleClass("cc-collapsed", false);
-        arrowEl.setText("\u25BE");
-      }
-    });
-    collapseAllBtn.addEventListener("click", () => {
-      for (const { key, itemsEl, arrowEl } of sectionMeta) {
-        this.expandedSections.delete(key);
-        itemsEl.toggleClass("cc-collapsed", true);
-        arrowEl.setText("\u25B8");
-      }
-    });
+    const sections = [...byId.keys()].sort().map((key) => ({ key, entries: byId.get(key) }));
+    if (noTag.length > 0) sections.push({ key: NO_TAG_KEY, entries: noTag });
+    renderGroupedSidebar(
+      this.app,
+      root,
+      filePath,
+      sections,
+      this.expandedSections,
+      filePath ? "No comments found in this note." : "Open a note to see its comments."
+    );
   }
 };
 
 // src/main.ts
-var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obsidian3.Plugin {
+var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obsidian5.Plugin {
   constructor() {
     super(...arguments);
     this.styleVersion = 0;
-    // Four independent display toggles (all ON by default)
+    // Annotation display toggles
     this.syntaxHidingEnabled = true;
     // hides {={id} and =} delimiters in LP / Reading View
     this.identifierFormattingEnabled = true;
     // applies custom color to the bracket+identifier portion
     this.textFormattingEnabled = true;
     // applies custom color to the annotation text content
+    // Comment display toggles
+    this.commentBracketsHiddenEnabled = true;
+    // hides {@ and @} delimiters in LP / Reading View
+    this.commentBracketFormattingEnabled = true;
+    // applies tag color to the bracket portion (LP only)
+    this.commentsHiddenEnabled = false;
+    // hides the entire comment — brackets and text
+    this.commentsFormattingEnabled = true;
+    // applies tag color to the comment text content
     this.lastUsedIdentifier = null;
     this.editorViews = /* @__PURE__ */ new Set();
     this.fileAnnotations = /* @__PURE__ */ new Map();
-    this.debouncedRefresh = (0, import_obsidian3.debounce)(() => this._refreshSidebar(), 150, true);
-    this.debouncedReloadConfig = (0, import_obsidian3.debounce)(() => {
+    this.fileComments = /* @__PURE__ */ new Map();
+    this.debouncedRefresh = (0, import_obsidian5.debounce)(() => this._refreshSidebar(), 150, true);
+    this.debouncedReloadConfig = (0, import_obsidian5.debounce)(() => {
       void this.reloadConfigFile();
     }, 8e3);
     this._writingConfigFile = false;
@@ -838,14 +1158,16 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
   async onload() {
     await this.loadSettings();
     this.addSettingTab(new AnnotationManagerSettingTab(this.app, this));
-    this.registerEditorExtension(createCommentViewPlugin(this));
+    this.registerEditorExtension(createAnnotationViewPlugin(this));
+    this.registerEditorExtension(createCommentDecorationViewPlugin(this));
     this.registerMarkdownPostProcessor((el, ctx) => {
       this.processReadingView(el);
-      if (this.settings.configSource === "file" && ctx.sourcePath === (0, import_obsidian3.normalizePath)(this.settings.configFilePath)) {
+      if (this.settings.configSource === "file" && ctx.sourcePath === (0, import_obsidian5.normalizePath)(this.settings.configFilePath)) {
         this.processConfigTable(el, ctx.sourcePath);
       }
     });
     this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new AnnotationSidebarView(leaf, this));
+    this.registerView(COMMENT_SIDEBAR_VIEW_TYPE, (leaf) => new CommentSidebarView(leaf, this));
     this.addRibbonIcon("message-square", "Annotation Manager: show annotations", () => {
       void this.toggleSidebar();
     });
@@ -853,6 +1175,32 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       id: "show-annotations-sidebar",
       name: "Show annotations sidebar",
       callback: () => this.toggleSidebar()
+    });
+    this.addCommand({
+      id: "show-comments-sidebar",
+      name: "Show comments sidebar",
+      callback: () => this.toggleCommentSidebar()
+    });
+    this.addCommand({
+      id: "add-comment",
+      name: "Add comment",
+      editorCallback: (editor) => {
+        const from = editor.getCursor("from");
+        const fromOffset = editor.posToOffset(from);
+        const annotations = parseAnnotations(editor.getValue());
+        const adjacentToAnnotation = annotations.some((a) => a.to === fromOffset);
+        const needsSpacer = adjacentToAnnotation && !this.settings.commentAutoInheritAdjacentTag;
+        const prefix = needsSpacer ? " " : "";
+        const selected = editor.getSelection();
+        if (selected) {
+          editor.replaceSelection(`${prefix}{@${selected}@}`);
+        } else {
+          const cursor = editor.getCursor();
+          const snippet = `${prefix}{@@}`;
+          editor.replaceRange(snippet, cursor);
+          editor.setCursor({ line: cursor.line, ch: cursor.ch + snippet.length - 2 });
+        }
+      }
     });
     this.addCommand({
       id: "apply-identifier",
@@ -878,7 +1226,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       editorCallback: (editor) => {
         const id = this.lastUsedIdentifier;
         if (!id) {
-          new import_obsidian3.Notice('No identifier has been used yet. Use "Apply identifier to selection" first.');
+          new import_obsidian5.Notice('No identifier has been used yet. Use "Apply identifier to selection" first.');
           return;
         }
         const selected = editor.getSelection();
@@ -897,8 +1245,10 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       name: "Toggle bracket/identifier visibility",
       callback: () => {
         this.syntaxHidingEnabled = !this.syntaxHidingEnabled;
+        this.settings.syntaxHidingEnabled = this.syntaxHidingEnabled;
+        void this.saveSettings();
         this.bumpStyleVersion();
-        new import_obsidian3.Notice(`Annotation brackets ${this.syntaxHidingEnabled ? "hidden" : "visible"}`);
+        new import_obsidian5.Notice(`Annotation brackets ${this.syntaxHidingEnabled ? "hidden" : "visible"}`);
       }
     });
     this.addCommand({
@@ -906,8 +1256,10 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       name: "Toggle bracket/identifier formatting",
       callback: () => {
         this.identifierFormattingEnabled = !this.identifierFormattingEnabled;
+        this.settings.identifierFormattingEnabled = this.identifierFormattingEnabled;
+        void this.saveSettings();
         this.bumpStyleVersion();
-        new import_obsidian3.Notice(
+        new import_obsidian5.Notice(
           `Annotation bracket/identifier formatting ${this.identifierFormattingEnabled ? "enabled" : "disabled"}`
         );
       }
@@ -917,9 +1269,59 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       name: "Toggle text formatting",
       callback: () => {
         this.textFormattingEnabled = !this.textFormattingEnabled;
+        this.settings.textFormattingEnabled = this.textFormattingEnabled;
+        void this.saveSettings();
         this.bumpStyleVersion();
-        new import_obsidian3.Notice(
+        new import_obsidian5.Notice(
           `Annotation text formatting ${this.textFormattingEnabled ? "enabled" : "disabled"}`
+        );
+      }
+    });
+    this.addCommand({
+      id: "toggle-comment-brackets",
+      name: "Toggle comment bracket visibility",
+      callback: () => {
+        this.commentBracketsHiddenEnabled = !this.commentBracketsHiddenEnabled;
+        this.settings.commentBracketsHiddenEnabled = this.commentBracketsHiddenEnabled;
+        void this.saveSettings();
+        this.bumpStyleVersion();
+        new import_obsidian5.Notice(`Comment brackets ${this.commentBracketsHiddenEnabled ? "hidden" : "visible"}`);
+      }
+    });
+    this.addCommand({
+      id: "toggle-comment-bracket-formatting",
+      name: "Toggle comment bracket formatting",
+      callback: () => {
+        this.commentBracketFormattingEnabled = !this.commentBracketFormattingEnabled;
+        this.settings.commentBracketFormattingEnabled = this.commentBracketFormattingEnabled;
+        void this.saveSettings();
+        this.bumpStyleVersion();
+        new import_obsidian5.Notice(
+          `Comment bracket formatting ${this.commentBracketFormattingEnabled ? "enabled" : "disabled"}`
+        );
+      }
+    });
+    this.addCommand({
+      id: "toggle-comments-visibility",
+      name: "Toggle comment visibility",
+      callback: () => {
+        this.commentsHiddenEnabled = !this.commentsHiddenEnabled;
+        this.settings.commentsHiddenEnabled = this.commentsHiddenEnabled;
+        void this.saveSettings();
+        this.bumpStyleVersion();
+        new import_obsidian5.Notice(`Comments ${this.commentsHiddenEnabled ? "hidden" : "visible"}`);
+      }
+    });
+    this.addCommand({
+      id: "toggle-comments-formatting",
+      name: "Toggle comment text formatting",
+      callback: () => {
+        this.commentsFormattingEnabled = !this.commentsFormattingEnabled;
+        this.settings.commentsFormattingEnabled = this.commentsFormattingEnabled;
+        void this.saveSettings();
+        this.bumpStyleVersion();
+        new import_obsidian5.Notice(
+          `Comment text formatting ${this.commentsFormattingEnabled ? "enabled" : "disabled"}`
         );
       }
     });
@@ -961,7 +1363,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     });
     this.registerEvent(
       this.app.vault.on("modify", async (file) => {
-        if (file instanceof import_obsidian3.TFile && file.extension === "md") {
+        if (file instanceof import_obsidian5.TFile && file.extension === "md") {
           await this.indexFile(file);
           this.injectDataviewMetadata(file);
           this.debouncedRefresh();
@@ -973,20 +1375,27 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     );
     this.registerEvent(
       this.app.vault.on("delete", (file) => {
-        if (file instanceof import_obsidian3.TFile) {
+        if (file instanceof import_obsidian5.TFile) {
           this.fileAnnotations.delete(file.path);
+          this.fileComments.delete(file.path);
           this.debouncedRefresh();
         }
       })
     );
     this.registerEvent(
       this.app.vault.on("rename", async (file, oldPath) => {
-        if (file instanceof import_obsidian3.TFile && file.extension === "md") {
+        if (file instanceof import_obsidian5.TFile && file.extension === "md") {
           this.fileAnnotations.delete(oldPath);
+          this.fileComments.delete(oldPath);
           await this.indexFile(file);
           this.injectDataviewMetadata(file);
           this.debouncedRefresh();
         }
+      })
+    );
+    this.registerEvent(
+      this.app.workspace.on("file-open", () => {
+        this.debouncedRefresh();
       })
     );
   }
@@ -996,12 +1405,22 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       DEFAULT_SETTINGS,
       await this.loadData()
     );
+    this.syntaxHidingEnabled = this.settings.syntaxHidingEnabled;
+    this.identifierFormattingEnabled = this.settings.identifierFormattingEnabled;
+    this.textFormattingEnabled = this.settings.textFormattingEnabled;
+    this.commentBracketsHiddenEnabled = this.settings.commentBracketsHiddenEnabled;
+    this.commentBracketFormattingEnabled = this.settings.commentBracketFormattingEnabled;
+    this.commentsHiddenEnabled = this.settings.commentsHiddenEnabled;
+    this.commentsFormattingEnabled = this.settings.commentsFormattingEnabled;
   }
   async saveSettings() {
     await this.saveData(this.settings);
   }
   getAllAnnotations() {
     return this.fileAnnotations;
+  }
+  getAllComments() {
+    return this.fileComments;
   }
   refreshSidebar() {
     this.debouncedRefresh();
@@ -1012,16 +1431,27 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
         leaf.view.render();
       }
     });
+    this.app.workspace.getLeavesOfType(COMMENT_SIDEBAR_VIEW_TYPE).forEach((leaf) => {
+      if (leaf.view instanceof CommentSidebarView) {
+        leaf.view.render();
+      }
+    });
   }
   async toggleSidebar() {
-    const existing = this.app.workspace.getLeavesOfType(SIDEBAR_VIEW_TYPE);
+    await this.toggleSidebarView(SIDEBAR_VIEW_TYPE);
+  }
+  async toggleCommentSidebar() {
+    await this.toggleSidebarView(COMMENT_SIDEBAR_VIEW_TYPE);
+  }
+  async toggleSidebarView(viewType) {
+    const existing = this.app.workspace.getLeavesOfType(viewType);
     if (existing.length && existing[0]) {
       await this.app.workspace.revealLeaf(existing[0]);
       return;
     }
     const leaf = this.app.workspace.getRightLeaf(false);
     if (leaf) {
-      await leaf.setViewState({ type: SIDEBAR_VIEW_TYPE });
+      await leaf.setViewState({ type: viewType });
       await this.app.workspace.revealLeaf(leaf);
     }
   }
@@ -1037,7 +1467,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
           cls: "side-dock-ribbon-action",
           attr: { "aria-label": "Annotation Manager: show annotations" }
         });
-        (0, import_obsidian3.setIcon)(btn, "message-square");
+        (0, import_obsidian5.setIcon)(btn, "message-square");
         btn.addEventListener("click", () => {
           void this.toggleSidebar();
         });
@@ -1054,7 +1484,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
           cls: "side-dock-ribbon-action",
           attr: { "aria-label": "Annotation Manager: show annotations" }
         });
-        (0, import_obsidian3.setIcon)(btn, "message-square");
+        (0, import_obsidian5.setIcon)(btn, "message-square");
         btn.addEventListener("click", () => {
           void this.toggleSidebar();
         });
@@ -1074,7 +1504,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
             title: "Annotation Manager"
           }
         });
-        (0, import_obsidian3.setIcon)(btn, "message-square");
+        (0, import_obsidian5.setIcon)(btn, "message-square");
         btn.addEventListener("click", () => {
           void this.toggleSidebar();
         });
@@ -1089,7 +1519,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     this.styleVersion++;
     this.app.workspace.updateOptions();
     this.app.workspace.iterateAllLeaves((leaf) => {
-      if (leaf.view instanceof import_obsidian3.MarkdownView) {
+      if (leaf.view instanceof import_obsidian5.MarkdownView) {
         leaf.view.previewMode.rerender(true);
       }
     });
@@ -1110,13 +1540,15 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     return [...ids].sort();
   }
   processReadingView(el) {
-    var _a, _b, _c;
-    if (!((_a = el.textContent) == null ? void 0 : _a.includes("{="))) return;
+    var _a, _b;
+    const text = (_a = el.textContent) != null ? _a : "";
+    if (!text.includes("{=") && !text.includes("{@")) return;
     const walker = activeDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
     const toReplace = [];
     let node;
     while (node = walker.nextNode()) {
-      if ((_b = node.nodeValue) == null ? void 0 : _b.includes("{=")) {
+      const value = node.nodeValue;
+      if ((value == null ? void 0 : value.includes("{=")) || (value == null ? void 0 : value.includes("{@"))) {
         toReplace.push(node);
       }
     }
@@ -1124,33 +1556,70 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       const parent = textNode.parentNode;
       if (!parent) continue;
       if (parent.tagName === "CODE" || parent.tagName === "PRE") continue;
-      const frag = this.buildReadingFragment((_c = textNode.nodeValue) != null ? _c : "");
+      const frag = this.buildReadingFragment((_b = textNode.nodeValue) != null ? _b : "");
       if (frag) parent.replaceChild(frag, textNode);
     }
   }
   // Returns a fragment of mixed text + styled spans, or null when nothing in the
   // text would be transformed (so the original text node is left untouched).
   buildReadingFragment(value) {
-    var _a, _b, _c;
-    if (!this.syntaxHidingEnabled) return null;
+    var _a, _b, _c, _d, _e, _f;
+    const doAnnotations = this.syntaxHidingEnabled;
+    const doComments = this.commentBracketsHiddenEnabled || this.commentsHiddenEnabled;
+    if (!doAnnotations && !doComments) return null;
     const frag = activeDocument.createDocumentFragment();
     let changed = false;
-    const re = new RegExp(_AnnotationManagerPlugin.READING_ANNOTATION.source, "g");
     let lastIndex = 0;
+    let lastAnnotationEnd = -1;
+    let lastAnnotationTag = null;
+    const re = new RegExp(_AnnotationManagerPlugin.READING_COMBINED.source, "g");
     let m;
     while ((m = re.exec(value)) !== null) {
-      if (m.index > lastIndex) {
-        frag.appendChild(activeDocument.createTextNode(value.slice(lastIndex, m.index)));
+      const isAnnotation = m[1] !== void 0;
+      if (isAnnotation) {
+        const parent = (_a = m[1]) != null ? _a : "";
+        const child = (_b = m[2]) != null ? _b : "";
+        const annEnd = m.index + m[0].length;
+        if (doAnnotations) {
+          if (m.index > lastIndex) {
+            frag.appendChild(activeDocument.createTextNode(value.slice(lastIndex, m.index)));
+          }
+          const span = createSpan({ cls: "cc-annotation" });
+          if (this.textFormattingEnabled) {
+            const style = resolvedStyle(parent, child, this.settings.identifierStyles);
+            if (style) this.applyInlineStyle(span, style);
+          }
+          span.appendChild(activeDocument.createTextNode(((_c = m[3]) != null ? _c : "").trim()));
+          frag.appendChild(span);
+          lastIndex = annEnd;
+          changed = true;
+        }
+        lastAnnotationEnd = annEnd;
+        lastAnnotationTag = { parent, child };
+      } else {
+        let parent = (_d = m[4]) != null ? _d : "";
+        let child = (_e = m[5]) != null ? _e : "";
+        if (!parent && m.index === lastAnnotationEnd && lastAnnotationTag) {
+          parent = lastAnnotationTag.parent;
+          child = lastAnnotationTag.child;
+        }
+        if (doComments) {
+          if (m.index > lastIndex) {
+            frag.appendChild(activeDocument.createTextNode(value.slice(lastIndex, m.index)));
+          }
+          if (!this.commentsHiddenEnabled) {
+            const span = createSpan({ cls: "cc-comment" });
+            if (this.commentsFormattingEnabled && parent) {
+              const style = resolvedStyle(parent, child, this.settings.identifierStyles);
+              if (style) this.applyInlineStyle(span, style);
+            }
+            span.appendChild(activeDocument.createTextNode(((_f = m[6]) != null ? _f : "").trim()));
+            frag.appendChild(span);
+          }
+          lastIndex = m.index + m[0].length;
+          changed = true;
+        }
       }
-      const span = createSpan({ cls: "cc-annotation" });
-      if (this.textFormattingEnabled) {
-        const style = resolvedStyle((_a = m[1]) != null ? _a : "", (_b = m[2]) != null ? _b : "", this.settings.identifierStyles);
-        if (style) this.applyInlineStyle(span, style);
-      }
-      span.appendChild(activeDocument.createTextNode(((_c = m[3]) != null ? _c : "").trim()));
-      frag.appendChild(span);
-      lastIndex = m.index + m[0].length;
-      changed = true;
     }
     if (lastIndex < value.length) {
       frag.appendChild(activeDocument.createTextNode(value.slice(lastIndex)));
@@ -1202,7 +1671,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       void (async () => {
         const newHex = picker.value;
         const file = this.app.vault.getAbstractFileByPath(sourcePath);
-        if (!(file instanceof import_obsidian3.TFile)) return;
+        if (!(file instanceof import_obsidian5.TFile)) return;
         const style = this.settings.identifierStyles[identifier];
         if (style) {
           if (field === "fontColor") style.fontColor = newHex;
@@ -1267,7 +1736,9 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
   async indexFile(file) {
     try {
       const content = await this.app.vault.cachedRead(file);
-      this.fileAnnotations.set(file.path, parseAnnotations(content));
+      const annotations = parseAnnotations(content);
+      this.fileAnnotations.set(file.path, annotations);
+      this.fileComments.set(file.path, resolveCommentTags(parseComments(content), annotations));
     } catch (e) {
       console.warn(`Annotation Manager: failed to index ${file.path}`, e);
     }
@@ -1275,32 +1746,32 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
   // ── Config file integration ──────────────────────────────────────────────
   async createConfigFile() {
     const content = renderConfigTable(this.settings.identifierStyles);
-    const path = (0, import_obsidian3.normalizePath)(this.settings.configFilePath || "OccConfig.md");
+    const path = (0, import_obsidian5.normalizePath)(this.settings.configFilePath || "OccConfig.md");
     try {
       const existing = this.app.vault.getAbstractFileByPath(path);
-      if (existing instanceof import_obsidian3.TFile) {
+      if (existing instanceof import_obsidian5.TFile) {
         await this.app.vault.process(existing, () => content);
       } else {
         await this.app.vault.create(path, content);
       }
       this.settings.configFilePath = path;
       await this.saveSettings();
-      new import_obsidian3.Notice(`Config file saved: ${path}`);
+      new import_obsidian5.Notice(`Config file saved: ${path}`);
     } catch (e) {
-      new import_obsidian3.Notice(`Failed to write config file: ${e instanceof Error ? e.message : String(e)}`);
+      new import_obsidian5.Notice(`Failed to write config file: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   async reloadConfigFile() {
-    const path = (0, import_obsidian3.normalizePath)(this.settings.configFilePath);
+    const path = (0, import_obsidian5.normalizePath)(this.settings.configFilePath);
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (!(file instanceof import_obsidian3.TFile)) {
-      new import_obsidian3.Notice(`Config file not found: ${path}`);
+    if (!(file instanceof import_obsidian5.TFile)) {
+      new import_obsidian5.Notice(`Config file not found: ${path}`);
       return;
     }
     const content = await this.app.vault.read(file);
     const parsed = parseConfigTable(content);
     if (Object.keys(parsed).length === 0 && Object.keys(this.settings.identifierStyles).length > 0) {
-      new import_obsidian3.Notice(
+      new import_obsidian5.Notice(
         `No identifiers found in ${path} \u2014 keeping existing styles. Check the table format.`
       );
       return;
@@ -1320,7 +1791,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
         this._writingConfigFile = false;
       }
     }
-    new import_obsidian3.Notice(
+    new import_obsidian5.Notice(
       `Loaded ${Object.keys(this.settings.identifierStyles).length} identifiers from ${path}`
     );
   }
@@ -1333,7 +1804,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       this.app.metadataCache.on(
         "dataview:metadata-change",
         (type, file) => {
-          if (type === "update" && file instanceof import_obsidian3.TFile) {
+          if (type === "update" && file instanceof import_obsidian5.TFile) {
             this.injectDataviewMetadata(file);
           }
         }
@@ -1368,8 +1839,14 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
 };
 // Annotation pattern: {={parent/child}content=}  or  {={parent}content=}
 _AnnotationManagerPlugin.READING_ANNOTATION = /\{=\{([^/}\s]+)(?:\/([^}\s]+))?}([\s\S]*?)=}/g;
+// Combined pattern: annotation groups are 1-3, comment groups are 4-6.
+// Exactly one side's groups are defined per match (m[1] !== undefined => annotation).
+_AnnotationManagerPlugin.READING_COMBINED = new RegExp(
+  `${_AnnotationManagerPlugin.READING_ANNOTATION.source}|${COMMENT_PATTERN.source}`,
+  "g"
+);
 var AnnotationManagerPlugin = _AnnotationManagerPlugin;
-var IdentifierSuggestModal = class extends import_obsidian3.SuggestModal {
+var IdentifierSuggestModal = class extends import_obsidian5.SuggestModal {
   constructor(app, plugin, onChoose) {
     super(app);
     this.plugin = plugin;
