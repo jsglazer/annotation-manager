@@ -48,6 +48,7 @@ export class AnnotationSidebarView extends ItemView {
 		renderGroupedSidebar(
 			this.app,
 			root,
+			'Annotations',
 			filePath,
 			sections,
 			this.expandedSections,

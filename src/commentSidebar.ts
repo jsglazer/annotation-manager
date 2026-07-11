@@ -63,6 +63,7 @@ export class CommentSidebarView extends ItemView {
 		renderGroupedSidebar(
 			this.app,
 			root,
+			'Comments',
 			filePath,
 			sections,
 			this.expandedSections,

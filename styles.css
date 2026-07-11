@@ -57,6 +57,15 @@
 	gap: 0;
 }
 
+.cc-sidebar-title {
+	font-size: 1em;
+	font-weight: 700;
+	color: var(--text-normal);
+	padding: 2px 4px 8px;
+	margin-bottom: 4px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
 .cc-sidebar-empty {
 	color: var(--text-muted);
 	font-style: italic;

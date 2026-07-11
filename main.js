@@ -62,6 +62,10 @@ var DEFAULT_SETTINGS = {
       enabled: { fontColor: "#ffffff", backgroundColor: "#4a90e2" },
       disabled: { fontColor: "#a0a0a0", backgroundColor: "#3a3a3a" }
     }
+  },
+  sbFlashStyle: {
+    light: { fontColor: "#ffffff", backgroundColor: "#e2984a" },
+    dark: { fontColor: "#ffffff", backgroundColor: "#e2984a" }
   }
 };
 var EMPTY_STYLE = {
@@ -323,6 +327,14 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
       return;
     }
     const infoPanel = containerEl.createDiv({ cls: "cc-info-panel" });
+    const p0 = infoPanel.createEl("p");
+    p0.appendText("Full documentation, syntax reference, and settings walkthroughs are in the ");
+    p0.createEl("a", {
+      text: "GitHub wiki",
+      href: "https://github.com/jsglazer/annotation-manager/wiki",
+      attr: { target: "_blank", rel: "noopener" }
+    });
+    p0.appendText(".");
     const p1 = infoPanel.createEl("p");
     p1.appendText("If you encounter errors or have questions, please submit an Issue on the ");
     p1.createEl("a", {
@@ -516,6 +528,23 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
       containerEl,
       "Dark theme",
       this.plugin.settings.sidebarButtonStyle.dark
+    );
+    new import_obsidian.Setting(containerEl).setName("SB flash colors").setHeading();
+    containerEl.createEl("p", {
+      text: "Colors briefly flashed on the SB button when clicked, before it switches between the Annotations and Comments sidebars.",
+      cls: "setting-item-description"
+    });
+    this.renderThemeColorBlock(
+      containerEl,
+      "Light theme",
+      "SB flash",
+      this.plugin.settings.sbFlashStyle.light
+    );
+    this.renderThemeColorBlock(
+      containerEl,
+      "Dark theme",
+      "SB flash",
+      this.plugin.settings.sbFlashStyle.dark
     );
   }
   renderSidebarButtonThemeBlock(containerEl, label, style) {
@@ -1127,12 +1156,13 @@ var import_obsidian3 = require("obsidian");
 
 // src/sidebarShared.ts
 var import_obsidian2 = require("obsidian");
-function renderGroupedSidebar(app, root, filePath, sections, expandedSections, emptyMessage, search) {
+function renderGroupedSidebar(app, root, title, filePath, sections, expandedSections, emptyMessage, search) {
   const prevSearchInput = search ? root.querySelector(".cc-sidebar-search-input") : null;
   const searchHadFocus = !!prevSearchInput && prevSearchInput === activeDocument.activeElement;
   const searchCursorPos = searchHadFocus ? prevSearchInput.selectionStart : null;
   root.empty();
   root.addClass("cc-sidebar");
+  root.createEl("div", { text: title, cls: "cc-sidebar-title" });
   if (!filePath) {
     root.createEl("p", { text: emptyMessage, cls: "cc-sidebar-empty" });
     return;
@@ -1226,7 +1256,9 @@ var ANNOTATION_ROW = [
     label: "B-V",
     tooltip: "Toggle annotation bracket visibility",
     commandId: "toggle-syntax-hiding",
-    isEnabled: (p) => p.syntaxHidingEnabled
+    // syntaxHidingEnabled=true means brackets are HIDDEN, so "visibility" is
+    // enabled when it's false.
+    isEnabled: (p) => !p.syntaxHidingEnabled
   },
   {
     label: "B-F",
@@ -1240,7 +1272,9 @@ var COMMENT_ROW = [
     label: "C-V",
     tooltip: "Toggle comment text visibility",
     commandId: "toggle-comments-visibility",
-    isEnabled: (p) => p.commentsHiddenEnabled
+    // commentsHiddenEnabled=true means comments are HIDDEN, so "visibility" is
+    // enabled when it's false.
+    isEnabled: (p) => !p.commentsHiddenEnabled
   },
   {
     label: "C-F",
@@ -1252,7 +1286,9 @@ var COMMENT_ROW = [
     label: "B-V",
     tooltip: "Toggle comment bracket visibility",
     commandId: "toggle-comment-brackets",
-    isEnabled: (p) => p.commentBracketsHiddenEnabled
+    // commentBracketsHiddenEnabled=true means brackets are HIDDEN, so
+    // "visibility" is enabled when it's false.
+    isEnabled: (p) => !p.commentBracketsHiddenEnabled
   },
   {
     label: "B-F",
@@ -1270,6 +1306,15 @@ function applyToggleButtonState(btn, plugin, enabled) {
     backgroundColor: style.backgroundColor || ""
   });
 }
+var SB_FLASH_DELAY_MS = 180;
+function flashSidebarButton(btn, plugin) {
+  const theme = activeDocument.body.classList.contains("theme-dark") ? "dark" : "light";
+  const style = plugin.settings.sbFlashStyle[theme];
+  btn.setCssStyles({
+    color: style.fontColor || "",
+    backgroundColor: style.backgroundColor || ""
+  });
+}
 function renderSidebarToggleRows(root, plugin, ownViewType) {
   const panel = root.createDiv("cc-sidebar-toggle-panel");
   const topRow = panel.createDiv("cc-sidebar-toggle-row");
@@ -1279,7 +1324,10 @@ function renderSidebarToggleRows(root, plugin, ownViewType) {
     attr: { title: "Switch annotations/comments sidebar" }
   });
   sbBtn.addEventListener("click", () => {
-    void plugin.switchToOtherSidebar(ownViewType);
+    flashSidebarButton(sbBtn, plugin);
+    window.setTimeout(() => {
+      void plugin.switchToOtherSidebar(ownViewType);
+    }, SB_FLASH_DELAY_MS);
   });
   for (const spec of ANNOTATION_ROW) {
     const btn = topRow.createEl("button", {
@@ -1364,6 +1412,7 @@ var AnnotationSidebarView = class extends import_obsidian3.ItemView {
     renderGroupedSidebar(
       this.app,
       root,
+      "Annotations",
       filePath,
       sections,
       this.expandedSections,
@@ -1421,6 +1470,7 @@ var CommentSidebarView = class extends import_obsidian4.ItemView {
     renderGroupedSidebar(
       this.app,
       root,
+      "Comments",
       filePath,
       sections,
       this.expandedSections,
@@ -1555,7 +1605,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
         new IdentifierSuggestModal(this.app, this, (id) => {
           this.lastUsedIdentifier = id;
           const annotationPart = `{={${id}}${selected}=}`;
-          const commentPart = `{@{${id}}@}`;
+          const commentPart = `{@@}`;
           editor.replaceSelection(annotationPart + commentPart);
           const fromOffset = editor.posToOffset(from);
           const cursorOffset = fromOffset + annotationPart.length + commentPart.length - 2;

@@ -33,6 +33,11 @@ export interface SidebarButtonStyle {
 	dark: SidebarButtonStateStyle;
 }
 
+export interface SbFlashStyle {
+	light: DelimiterColorStyle;
+	dark: DelimiterColorStyle;
+}
+
 export interface AnnotationManagerSettings {
 	// Key is "parent/child", "parent/*", or "parent"
 	identifierStyles: Record<string, IdentifierStyle>;
@@ -67,6 +72,9 @@ export interface AnnotationManagerSettings {
 	// Colors for the sidebar toggle-button rows (all buttons except SB), per
 	// light/dark theme, reflecting whether each button's function is on or off.
 	sidebarButtonStyle: SidebarButtonStyle;
+
+	// Color briefly flashed on the SB button when clicked, per light/dark theme.
+	sbFlashStyle: SbFlashStyle;
 }
 
 export const DEFAULT_SETTINGS: AnnotationManagerSettings = {
@@ -104,6 +112,11 @@ export const DEFAULT_SETTINGS: AnnotationManagerSettings = {
 			enabled: { fontColor: '#ffffff', backgroundColor: '#4a90e2' },
 			disabled: { fontColor: '#a0a0a0', backgroundColor: '#3a3a3a' },
 		},
+	},
+
+	sbFlashStyle: {
+		light: { fontColor: '#ffffff', backgroundColor: '#e2984a' },
+		dark: { fontColor: '#ffffff', backgroundColor: '#e2984a' },
 	},
 };
 
@@ -478,6 +491,14 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		}
 
 		const infoPanel = containerEl.createDiv({ cls: 'cc-info-panel' });
+		const p0 = infoPanel.createEl('p');
+		p0.appendText('Full documentation, syntax reference, and settings walkthroughs are in the ');
+		p0.createEl('a', {
+			text: 'GitHub wiki',
+			href: 'https://github.com/jsglazer/annotation-manager/wiki',
+			attr: { target: '_blank', rel: 'noopener' },
+		});
+		p0.appendText('.');
 		const p1 = infoPanel.createEl('p');
 		p1.appendText('If you encounter errors or have questions, please submit an Issue on the ');
 		p1.createEl('a', {
@@ -711,6 +732,27 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			containerEl,
 			'Dark theme',
 			this.plugin.settings.sidebarButtonStyle.dark,
+		);
+
+		new Setting(containerEl).setName('SB flash colors').setHeading();
+		containerEl.createEl('p', {
+			text:
+				'Colors briefly flashed on the SB button when clicked, before it switches ' +
+				'between the Annotations and Comments sidebars.',
+			cls: 'setting-item-description',
+		});
+
+		this.renderThemeColorBlock(
+			containerEl,
+			'Light theme',
+			'SB flash',
+			this.plugin.settings.sbFlashStyle.light,
+		);
+		this.renderThemeColorBlock(
+			containerEl,
+			'Dark theme',
+			'SB flash',
+			this.plugin.settings.sbFlashStyle.dark,
 		);
 	}
 

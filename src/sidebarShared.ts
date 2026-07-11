@@ -24,6 +24,7 @@ export interface SidebarSearch {
 export function renderGroupedSidebar(
 	app: App,
 	root: HTMLElement,
+	title: string,
 	filePath: string | null,
 	sections: GroupedSection[],
 	expandedSections: Set<string>,
@@ -40,6 +41,8 @@ export function renderGroupedSidebar(
 
 	root.empty();
 	root.addClass('cc-sidebar');
+
+	root.createEl('div', { text: title, cls: 'cc-sidebar-title' });
 
 	if (!filePath) {
 		root.createEl('p', { text: emptyMessage, cls: 'cc-sidebar-empty' });
@@ -162,7 +165,9 @@ const ANNOTATION_ROW: ToggleButtonSpec[] = [
 		label: 'B-V',
 		tooltip: 'Toggle annotation bracket visibility',
 		commandId: 'toggle-syntax-hiding',
-		isEnabled: (p) => p.syntaxHidingEnabled,
+		// syntaxHidingEnabled=true means brackets are HIDDEN, so "visibility" is
+		// enabled when it's false.
+		isEnabled: (p) => !p.syntaxHidingEnabled,
 	},
 	{
 		label: 'B-F',
@@ -177,7 +182,9 @@ const COMMENT_ROW: ToggleButtonSpec[] = [
 		label: 'C-V',
 		tooltip: 'Toggle comment text visibility',
 		commandId: 'toggle-comments-visibility',
-		isEnabled: (p) => p.commentsHiddenEnabled,
+		// commentsHiddenEnabled=true means comments are HIDDEN, so "visibility" is
+		// enabled when it's false.
+		isEnabled: (p) => !p.commentsHiddenEnabled,
 	},
 	{
 		label: 'C-F',
@@ -189,7 +196,9 @@ const COMMENT_ROW: ToggleButtonSpec[] = [
 		label: 'B-V',
 		tooltip: 'Toggle comment bracket visibility',
 		commandId: 'toggle-comment-brackets',
-		isEnabled: (p) => p.commentBracketsHiddenEnabled,
+		// commentBracketsHiddenEnabled=true means brackets are HIDDEN, so
+		// "visibility" is enabled when it's false.
+		isEnabled: (p) => !p.commentBracketsHiddenEnabled,
 	},
 	{
 		label: 'B-F',
@@ -216,6 +225,21 @@ function applyToggleButtonState(
 	});
 }
 
+// Delay before switching sidebars on SB click, so the flash color set below
+// is actually visible before the button is torn down by the view switch.
+const SB_FLASH_DELAY_MS = 180;
+
+// Briefly applies the settings-configured flash color to the SB button on
+// click, as immediate visual feedback before the sidebar switch tears it down.
+function flashSidebarButton(btn: HTMLElement, plugin: AnnotationManagerPlugin): void {
+	const theme = activeDocument.body.classList.contains('theme-dark') ? 'dark' : 'light';
+	const style = plugin.settings.sbFlashStyle[theme];
+	btn.setCssStyles({
+		color: style.fontColor || '',
+		backgroundColor: style.backgroundColor || '',
+	});
+}
+
 // Rendered unconditionally (even with no file open / no entries), always
 // appended after everything else `renderGroupedSidebar` builds, so it sits
 // at the bottom of the sidebar regardless of content state.
@@ -233,7 +257,10 @@ export function renderSidebarToggleRows(
 		attr: { title: 'Switch annotations/comments sidebar' },
 	});
 	sbBtn.addEventListener('click', () => {
-		void plugin.switchToOtherSidebar(ownViewType);
+		flashSidebarButton(sbBtn, plugin);
+		window.setTimeout(() => {
+			void plugin.switchToOtherSidebar(ownViewType);
+		}, SB_FLASH_DELAY_MS);
 	});
 	for (const spec of ANNOTATION_ROW) {
 		const btn = topRow.createEl('button', {

@@ -202,9 +202,12 @@ export default class AnnotationManagerPlugin extends Plugin {
 				new IdentifierSuggestModal(this.app, this, (id) => {
 					this.lastUsedIdentifier = id;
 					const annotationPart = `{={${id}}${selected}=}`;
-					const commentPart = `{@{${id}}@}`;
+					// No explicit tag here: the comment is zero-space adjacent to the
+					// annotation above, so resolveCommentTags already inherits its tag —
+					// embedding it again would just duplicate the identifier.
+					const commentPart = `{@@}`;
 					editor.replaceSelection(annotationPart + commentPart);
-					// Place cursor inside the empty adjacent comment, between } and @}
+					// Place cursor inside the empty adjacent comment, between {@ and @}
 					const fromOffset = editor.posToOffset(from);
 					const cursorOffset =
 						fromOffset + annotationPart.length + commentPart.length - 2;

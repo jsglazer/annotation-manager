@@ -32,7 +32,7 @@ export default tseslint.config(
 			'obsidianmd/ui/sentence-case': [
 				'error',
 				{
-					brands: ['Annotation Manager', 'Markdown'],
+					brands: ['Annotation Manager', 'Markdown', 'SB'],
 					ignoreRegex: [
 						'Apply identifier to selection',
 						'Insert citation',
