@@ -1,4 +1,5 @@
 import { App, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian';
+import type AnnotationManagerPlugin from './main';
 
 export interface GroupedEntry {
 	text: string;
@@ -135,6 +136,77 @@ export function renderGroupedSidebar(
 			arrowEl.setText('▸');
 		}
 	});
+}
+
+// ── Toggle button rows ──────────────────────────────────────────────────
+// Identical two-row control panel rendered at the bottom of both the
+// Annotations and Comments sidebars: SB switches which sidebar is open,
+// the rest fire the plugin's existing formatting/visibility commands.
+
+interface ToggleButtonSpec {
+	label: string;
+	tooltip: string;
+	commandId: string;
+}
+
+const ANNOTATION_ROW: ToggleButtonSpec[] = [
+	{ label: 'A-F', tooltip: 'Toggle annotation text formatting', commandId: 'toggle-text-formatting' },
+	{ label: 'B-V', tooltip: 'Toggle annotation bracket visibility', commandId: 'toggle-syntax-hiding' },
+	{
+		label: 'B-F',
+		tooltip: 'Toggle annotation bracket formatting',
+		commandId: 'toggle-identifier-formatting',
+	},
+];
+
+const COMMENT_ROW: ToggleButtonSpec[] = [
+	{ label: 'C-V', tooltip: 'Toggle comment text visibility', commandId: 'toggle-comments-visibility' },
+	{ label: 'C-F', tooltip: 'Toggle comment text formatting', commandId: 'toggle-comments-formatting' },
+	{ label: 'B-V', tooltip: 'Toggle comment bracket visibility', commandId: 'toggle-comment-brackets' },
+	{
+		label: 'B-F',
+		tooltip: 'Toggle comment bracket formatting',
+		commandId: 'toggle-comment-bracket-formatting',
+	},
+];
+
+// Rendered unconditionally (even with no file open / no entries), always
+// appended after everything else `renderGroupedSidebar` builds, so it sits
+// at the bottom of the sidebar regardless of content state.
+export function renderSidebarToggleRows(
+	root: HTMLElement,
+	plugin: AnnotationManagerPlugin,
+	ownViewType: string,
+): void {
+	const panel = root.createDiv('cc-sidebar-toggle-panel');
+
+	const topRow = panel.createDiv('cc-sidebar-toggle-row');
+	const sbBtn = topRow.createEl('button', {
+		text: 'SB',
+		cls: 'cc-toggle-btn',
+		attr: { title: 'Switch annotations/comments sidebar' },
+	});
+	sbBtn.addEventListener('click', () => {
+		void plugin.switchToOtherSidebar(ownViewType);
+	});
+	for (const spec of ANNOTATION_ROW) {
+		const btn = topRow.createEl('button', {
+			text: spec.label,
+			cls: 'cc-toggle-btn',
+			attr: { title: spec.tooltip },
+		});
+		btn.addEventListener('click', () => plugin.runCommand(spec.commandId));
+	}
+
+	const bottomRow = panel.createDiv('cc-sidebar-toggle-row');
+	for (const spec of COMMENT_ROW) {
+		const btn = bottomRow.createEl('button', {
+			text: spec.label,
+			cls: 'cc-toggle-btn',
+			attr: { title: spec.tooltip },
+		});
+		btn.addEventListener('click', () => plugin.runCommand(spec.commandId));
+	}
 }
 
 async function jumpToLine(app: App, filePath: string, line: number): Promise<void> {

@@ -326,11 +326,13 @@ function buildCommentDecorations(
 			const style = resolvedStyle(parent, child, plugin.settings.identifierStyles);
 			// Tag color wins when formatting is on and a tag resolved; otherwise fall
 			// back to the fixed Comment Content color so untagged/non-adjacent
-			// comments still respond to the "Comments formatting" toggle.
-			const textMark =
-				plugin.commentsFormattingEnabled && cls
+			// comments still respond to the "Comments formatting" toggle. Both branches
+			// stay under the enabled check so turning formatting off always clears color.
+			const textMark = plugin.commentsFormattingEnabled
+				? cls
 					? makeColorMark(cls, style)
-					: (contentStyleMark(plugin) ?? NEUTRAL_MARK);
+					: (contentStyleMark(plugin) ?? NEUTRAL_MARK)
+				: NEUTRAL_MARK;
 
 			// prefixLen = length of the opening delimiter ({@ or {@{parent/child})
 			const prefixLen = fullLen - content.length - 2; // 2 = length of @}
@@ -350,10 +352,11 @@ function buildCommentDecorations(
 				}
 				builder.add(suffixStart, end, HIDE);
 			} else {
-				const idMark =
-					plugin.commentBracketFormattingEnabled && cls
+				const idMark = plugin.commentBracketFormattingEnabled
+					? cls
 						? makeColorMark(cls, style)
-						: (delimiterStyleMark(plugin) ?? NEUTRAL_MARK);
+						: (delimiterStyleMark(plugin) ?? NEUTRAL_MARK)
+					: NEUTRAL_MARK;
 
 				if (contentStart > start) builder.add(start, contentStart, idMark);
 

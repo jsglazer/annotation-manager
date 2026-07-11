@@ -980,7 +980,7 @@ function buildCommentDecorations(view, plugin) {
       }
       const cls = resolvedClass(parent, child, plugin.settings.identifierStyles);
       const style = resolvedStyle(parent, child, plugin.settings.identifierStyles);
-      const textMark = plugin.commentsFormattingEnabled && cls ? makeColorMark(cls, style) : (_j = contentStyleMark(plugin)) != null ? _j : NEUTRAL_MARK;
+      const textMark = plugin.commentsFormattingEnabled ? cls ? makeColorMark(cls, style) : (_j = contentStyleMark(plugin)) != null ? _j : NEUTRAL_MARK : NEUTRAL_MARK;
       const prefixLen = fullLen - content.length - 2;
       const contentStart = start + prefixLen;
       const suffixStart = end - 2;
@@ -995,7 +995,7 @@ function buildCommentDecorations(view, plugin) {
         }
         builder.add(suffixStart, end, HIDE);
       } else {
-        const idMark = plugin.commentBracketFormattingEnabled && cls ? makeColorMark(cls, style) : (_k = delimiterStyleMark(plugin)) != null ? _k : NEUTRAL_MARK;
+        const idMark = plugin.commentBracketFormattingEnabled ? cls ? makeColorMark(cls, style) : (_k = delimiterStyleMark(plugin)) != null ? _k : NEUTRAL_MARK : NEUTRAL_MARK;
         if (contentStart > start) builder.add(start, contentStart, idMark);
         if (suffixStart > contentStart) {
           if (inLP && cursorInside) {
@@ -1133,6 +1133,54 @@ function renderGroupedSidebar(app, root, filePath, sections, expandedSections, e
     }
   });
 }
+var ANNOTATION_ROW = [
+  { label: "A-F", tooltip: "Toggle annotation text formatting", commandId: "toggle-text-formatting" },
+  { label: "B-V", tooltip: "Toggle annotation bracket visibility", commandId: "toggle-syntax-hiding" },
+  {
+    label: "B-F",
+    tooltip: "Toggle annotation bracket formatting",
+    commandId: "toggle-identifier-formatting"
+  }
+];
+var COMMENT_ROW = [
+  { label: "C-V", tooltip: "Toggle comment text visibility", commandId: "toggle-comments-visibility" },
+  { label: "C-F", tooltip: "Toggle comment text formatting", commandId: "toggle-comments-formatting" },
+  { label: "B-V", tooltip: "Toggle comment bracket visibility", commandId: "toggle-comment-brackets" },
+  {
+    label: "B-F",
+    tooltip: "Toggle comment bracket formatting",
+    commandId: "toggle-comment-bracket-formatting"
+  }
+];
+function renderSidebarToggleRows(root, plugin, ownViewType) {
+  const panel = root.createDiv("cc-sidebar-toggle-panel");
+  const topRow = panel.createDiv("cc-sidebar-toggle-row");
+  const sbBtn = topRow.createEl("button", {
+    text: "SB",
+    cls: "cc-toggle-btn",
+    attr: { title: "Switch annotations/comments sidebar" }
+  });
+  sbBtn.addEventListener("click", () => {
+    void plugin.switchToOtherSidebar(ownViewType);
+  });
+  for (const spec of ANNOTATION_ROW) {
+    const btn = topRow.createEl("button", {
+      text: spec.label,
+      cls: "cc-toggle-btn",
+      attr: { title: spec.tooltip }
+    });
+    btn.addEventListener("click", () => plugin.runCommand(spec.commandId));
+  }
+  const bottomRow = panel.createDiv("cc-sidebar-toggle-row");
+  for (const spec of COMMENT_ROW) {
+    const btn = bottomRow.createEl("button", {
+      text: spec.label,
+      cls: "cc-toggle-btn",
+      attr: { title: spec.tooltip }
+    });
+    btn.addEventListener("click", () => plugin.runCommand(spec.commandId));
+  }
+}
 async function jumpToLine(app, filePath, line) {
   const file = app.vault.getAbstractFileByPath(filePath);
   if (!(file instanceof import_obsidian2.TFile)) return;
@@ -1199,6 +1247,7 @@ var AnnotationSidebarView = class extends import_obsidian3.ItemView {
       this.expandedSections,
       filePath ? "No annotations found in this note." : "Open a note to see its annotations."
     );
+    renderSidebarToggleRows(root, this.plugin, SIDEBAR_VIEW_TYPE);
   }
 };
 
@@ -1262,6 +1311,7 @@ var CommentSidebarView = class extends import_obsidian4.ItemView {
         }
       } : void 0
     );
+    renderSidebarToggleRows(root, this.plugin, COMMENT_SIDEBAR_VIEW_TYPE);
   }
 };
 
@@ -1389,7 +1439,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     });
     this.addCommand({
       id: "toggle-syntax-hiding",
-      name: "Toggle bracket/identifier visibility",
+      name: "Toggle annotation bracket visibility",
       callback: () => {
         this.syntaxHidingEnabled = !this.syntaxHidingEnabled;
         this.settings.syntaxHidingEnabled = this.syntaxHidingEnabled;
@@ -1400,7 +1450,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     });
     this.addCommand({
       id: "toggle-identifier-formatting",
-      name: "Toggle bracket/identifier formatting",
+      name: "Toggle annotation bracket formatting",
       callback: () => {
         this.identifierFormattingEnabled = !this.identifierFormattingEnabled;
         this.settings.identifierFormattingEnabled = this.identifierFormattingEnabled;
@@ -1413,7 +1463,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     });
     this.addCommand({
       id: "toggle-text-formatting",
-      name: "Toggle text formatting",
+      name: "Toggle annotation text formatting",
       callback: () => {
         this.textFormattingEnabled = !this.textFormattingEnabled;
         this.settings.textFormattingEnabled = this.textFormattingEnabled;
@@ -1450,7 +1500,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     });
     this.addCommand({
       id: "toggle-comments-visibility",
-      name: "Toggle comment visibility",
+      name: "Toggle comment text visibility",
       callback: () => {
         this.commentsHiddenEnabled = !this.commentsHiddenEnabled;
         this.settings.commentsHiddenEnabled = this.commentsHiddenEnabled;
@@ -1589,6 +1639,20 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
   }
   async toggleCommentSidebar() {
     await this.toggleSidebarView(COMMENT_SIDEBAR_VIEW_TYPE);
+  }
+  // Closes the sidebar the SB button was clicked from and opens/reveals the
+  // other one — a true switch, unlike toggleSidebarView's open-or-reveal.
+  async switchToOtherSidebar(fromType) {
+    const toType = fromType === SIDEBAR_VIEW_TYPE ? COMMENT_SIDEBAR_VIEW_TYPE : SIDEBAR_VIEW_TYPE;
+    this.app.workspace.getLeavesOfType(fromType).forEach((leaf) => leaf.detach());
+    await this.toggleSidebarView(toType);
+  }
+  // Runs a plugin command by its unprefixed id (e.g. 'toggle-text-formatting'),
+  // for the sidebar toggle-button rows. Obsidian's command execution API is
+  // undocumented/internal, hence the local cast.
+  runCommand(id) {
+    const commands = this.app.commands;
+    commands.executeCommandById(`${this.manifest.id}:${id}`);
   }
   async toggleSidebarView(viewType) {
     const existing = this.app.workspace.getLeavesOfType(viewType);

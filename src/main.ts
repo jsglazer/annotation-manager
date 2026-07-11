@@ -209,7 +209,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'toggle-syntax-hiding',
-			name: 'Toggle bracket/identifier visibility',
+			name: 'Toggle annotation bracket visibility',
 			callback: () => {
 				this.syntaxHidingEnabled = !this.syntaxHidingEnabled;
 				this.settings.syntaxHidingEnabled = this.syntaxHidingEnabled;
@@ -221,7 +221,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'toggle-identifier-formatting',
-			name: 'Toggle bracket/identifier formatting',
+			name: 'Toggle annotation bracket formatting',
 			callback: () => {
 				this.identifierFormattingEnabled = !this.identifierFormattingEnabled;
 				this.settings.identifierFormattingEnabled = this.identifierFormattingEnabled;
@@ -235,7 +235,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'toggle-text-formatting',
-			name: 'Toggle text formatting',
+			name: 'Toggle annotation text formatting',
 			callback: () => {
 				this.textFormattingEnabled = !this.textFormattingEnabled;
 				this.settings.textFormattingEnabled = this.textFormattingEnabled;
@@ -275,7 +275,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'toggle-comments-visibility',
-			name: 'Toggle comment visibility',
+			name: 'Toggle comment text visibility',
 			callback: () => {
 				this.commentsHiddenEnabled = !this.commentsHiddenEnabled;
 				this.settings.commentsHiddenEnabled = this.commentsHiddenEnabled;
@@ -442,6 +442,24 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 	private async toggleCommentSidebar(): Promise<void> {
 		await this.toggleSidebarView(COMMENT_SIDEBAR_VIEW_TYPE);
+	}
+
+	// Closes the sidebar the SB button was clicked from and opens/reveals the
+	// other one — a true switch, unlike toggleSidebarView's open-or-reveal.
+	async switchToOtherSidebar(fromType: string): Promise<void> {
+		const toType = fromType === SIDEBAR_VIEW_TYPE ? COMMENT_SIDEBAR_VIEW_TYPE : SIDEBAR_VIEW_TYPE;
+		this.app.workspace.getLeavesOfType(fromType).forEach((leaf) => leaf.detach());
+		await this.toggleSidebarView(toType);
+	}
+
+	// Runs a plugin command by its unprefixed id (e.g. 'toggle-text-formatting'),
+	// for the sidebar toggle-button rows. Obsidian's command execution API is
+	// undocumented/internal, hence the local cast.
+	runCommand(id: string): void {
+		const commands = (
+			this.app as unknown as { commands: { executeCommandById(id: string): boolean } }
+		).commands;
+		commands.executeCommandById(`${this.manifest.id}:${id}`);
 	}
 
 	private async toggleSidebarView(viewType: string): Promise<void> {

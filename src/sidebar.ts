@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf } from 'obsidian';
 import AnnotationManagerPlugin from './main';
-import { GroupedSection, renderGroupedSidebar } from './sidebarShared';
+import { GroupedSection, renderGroupedSidebar, renderSidebarToggleRows } from './sidebarShared';
 
 export const SIDEBAR_VIEW_TYPE = 'annotation-manager-sidebar';
 
@@ -53,5 +53,6 @@ export class AnnotationSidebarView extends ItemView {
 			this.expandedSections,
 			filePath ? 'No annotations found in this note.' : 'Open a note to see its annotations.',
 		);
+		renderSidebarToggleRows(root, this.plugin, SIDEBAR_VIEW_TYPE);
 	}
 }

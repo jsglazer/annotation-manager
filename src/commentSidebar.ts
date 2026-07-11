@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf } from 'obsidian';
 import AnnotationManagerPlugin from './main';
-import { GroupedSection, renderGroupedSidebar } from './sidebarShared';
+import { GroupedSection, renderGroupedSidebar, renderSidebarToggleRows } from './sidebarShared';
 
 export const COMMENT_SIDEBAR_VIEW_TYPE = 'annotation-manager-comment-sidebar';
 
@@ -77,5 +77,6 @@ export class CommentSidebarView extends ItemView {
 					}
 				: undefined,
 		);
+		renderSidebarToggleRows(root, this.plugin, COMMENT_SIDEBAR_VIEW_TYPE);
 	}
 }
