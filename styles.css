@@ -63,6 +63,20 @@
 	padding: 8px 4px;
 }
 
+.cc-sidebar-search {
+	padding: 2px 2px 8px;
+}
+
+.cc-sidebar-search-input {
+	width: 100%;
+	padding: 4px 8px;
+	font-size: 0.85em;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
 .cc-sidebar-controls {
 	display: flex;
 	gap: 6px;
@@ -241,6 +255,11 @@
 	color: var(--text-on-accent);
 }
 
+.cc-suggest-blank {
+	color: var(--text-muted);
+	font-style: italic;
+}
+
 /* ── Typeahead dropdown ──────────────────────────────────────────────────── */
 
 .cc-typeahead-dropdown {
@@ -311,6 +330,14 @@
 	background: transparent;
 	margin-right: 4px;
 	vertical-align: middle;
+}
+
+/* ── Settings version label ──────────────────────────────────────────────── */
+
+.cc-settings-version {
+	font-size: 0.75em;
+	color: var(--text-faint);
+	margin-bottom: 8px;
 }
 
 /* ── Settings tab bar ─────────────────────────────────────────────────────── */

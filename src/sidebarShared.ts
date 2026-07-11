@@ -10,6 +10,11 @@ export interface GroupedSection {
 	entries: GroupedEntry[];
 }
 
+export interface SidebarSearch {
+	query: string;
+	onChange: (value: string) => void;
+}
+
 // Shared renderer for the Annotations and Comments sidebars: both group
 // current-file entries by tag, support expand/collapse-all, and jump to the
 // entry's line on click. `sections` order is preserved as given by the caller
@@ -21,11 +26,39 @@ export function renderGroupedSidebar(
 	sections: GroupedSection[],
 	expandedSections: Set<string>,
 	emptyMessage: string,
+	search?: SidebarSearch,
 ): void {
+	// Re-render (e.g. on every keystroke in the search box) rebuilds the whole
+	// root — preserve focus/cursor position on the search input across that.
+	const prevSearchInput = search
+		? root.querySelector<HTMLInputElement>('.cc-sidebar-search-input')
+		: null;
+	const searchHadFocus = !!prevSearchInput && prevSearchInput === activeDocument.activeElement;
+	const searchCursorPos = searchHadFocus ? prevSearchInput!.selectionStart : null;
+
 	root.empty();
 	root.addClass('cc-sidebar');
 
-	if (!filePath || sections.length === 0) {
+	if (!filePath) {
+		root.createEl('p', { text: emptyMessage, cls: 'cc-sidebar-empty' });
+		return;
+	}
+
+	if (search) {
+		const searchWrap = root.createDiv('cc-sidebar-search');
+		const input = searchWrap.createEl('input', {
+			cls: 'cc-sidebar-search-input',
+			attr: { type: 'text', placeholder: 'Search…' },
+		});
+		input.value = search.query;
+		input.addEventListener('input', () => search.onChange(input.value));
+		if (searchHadFocus) {
+			input.focus();
+			if (searchCursorPos !== null) input.setSelectionRange(searchCursorPos, searchCursorPos);
+		}
+	}
+
+	if (sections.length === 0) {
 		root.createEl('p', { text: emptyMessage, cls: 'cc-sidebar-empty' });
 		return;
 	}

@@ -24,6 +24,29 @@ function isLivePreview(view: EditorView): boolean {
 	return view.dom.closest('.is-live-preview') !== null;
 }
 
+function isDarkTheme(): boolean {
+	return activeDocument.body.classList.contains('theme-dark');
+}
+
+// Fixed fore/background color for the {@ / @} delimiter glyphs, independent of
+// tag color. Returns null when no color is configured for the active theme.
+function delimiterStyleMark(plugin: AnnotationManagerPlugin): Decoration | null {
+	const theme = isDarkTheme() ? 'dark' : 'light';
+	const s = plugin.settings.commentDelimiterStyle[theme];
+	if (!s.fontColor && !s.backgroundColor) return null;
+
+	const parts: string[] = [];
+	const classes = ['cc-annotation-editor'];
+	if (s.fontColor) {
+		parts.push(`color: ${s.fontColor}`);
+		parts.push(`--cc-fg: ${s.fontColor}`);
+		classes.push('cc-fg');
+	}
+	if (s.backgroundColor) parts.push(`background-color: ${s.backgroundColor}`);
+
+	return Decoration.mark({ class: classes.join(' '), attributes: { style: parts.join('; ') } });
+}
+
 // Find [from, to) ranges of fenced code blocks and inline code in a text chunk.
 // Used to skip annotation matches that fall inside code regions.
 function getCodeRanges(text: string): Array<[number, number]> {
@@ -301,7 +324,9 @@ function buildCommentDecorations(
 				builder.add(suffixStart, end, HIDE);
 			} else {
 				const idMark =
-					plugin.commentBracketFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
+					plugin.commentBracketFormattingEnabled && cls
+						? makeColorMark(cls, style)
+						: (delimiterStyleMark(plugin) ?? NEUTRAL_MARK);
 				const textMark =
 					plugin.commentsFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
 

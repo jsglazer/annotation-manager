@@ -8,7 +8,9 @@ const NO_TAG_KEY = 'No Tag';
 
 export class CommentSidebarView extends ItemView {
 	private plugin: AnnotationManagerPlugin;
-	private expandedSections = new Set<string>();
+	// "No Tag" defaults to expanded; every other section defaults to collapsed.
+	private expandedSections = new Set<string>([NO_TAG_KEY]);
+	private searchQuery = '';
 
 	constructor(leaf: WorkspaceLeaf, plugin: AnnotationManagerPlugin) {
 		super(leaf);
@@ -33,7 +35,11 @@ export class CommentSidebarView extends ItemView {
 		const root = this.containerEl.children[1] as HTMLElement;
 		const file = this.app.workspace.getActiveFile();
 		const filePath = file && file.extension === 'md' ? file.path : null;
-		const comments = filePath ? (this.plugin.getAllComments().get(filePath) ?? []) : [];
+		const allComments = filePath ? (this.plugin.getAllComments().get(filePath) ?? []) : [];
+		const query = this.searchQuery.trim().toLowerCase();
+		const comments = query
+			? allComments.filter((c) => c.text.toLowerCase().includes(query))
+			: allComments;
 
 		// Group by resolved tag (explicit or inherited); untagged comments go
 		// into a trailing "No Tag" section regardless of alphabetical order.
@@ -61,6 +67,15 @@ export class CommentSidebarView extends ItemView {
 			sections,
 			this.expandedSections,
 			filePath ? 'No comments found in this note.' : 'Open a note to see its comments.',
+			filePath
+				? {
+						query: this.searchQuery,
+						onChange: (v) => {
+							this.searchQuery = v;
+							this.render();
+						},
+					}
+				: undefined,
 		);
 	}
 }

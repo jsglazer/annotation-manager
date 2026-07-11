@@ -140,23 +140,19 @@ export default class AnnotationManagerPlugin extends Plugin {
 			id: 'add-comment',
 			name: 'Add comment',
 			editorCallback: (editor: Editor) => {
-				const from = editor.getCursor('from');
-				const fromOffset = editor.posToOffset(from);
-				const annotations = parseAnnotations(editor.getValue());
-				const adjacentToAnnotation = annotations.some((a) => a.to === fromOffset);
-				const needsSpacer = adjacentToAnnotation && !this.settings.commentAutoInheritAdjacentTag;
-				const prefix = needsSpacer ? ' ' : '';
-
-				const selected = editor.getSelection();
-				if (selected) {
-					editor.replaceSelection(`${prefix}{@${selected}@}`);
-				} else {
-					const cursor = editor.getCursor();
-					const snippet = `${prefix}{@@}`;
-					editor.replaceRange(snippet, cursor);
-					// Place cursor between the two '@' symbols
-					editor.setCursor({ line: cursor.line, ch: cursor.ch + snippet.length - 2 });
+				if (this.commentsHiddenEnabled) {
+					this.commentsHiddenEnabled = false;
+					this.settings.commentsHiddenEnabled = false;
+					void this.saveSettings();
+					this.bumpStyleVersion();
 				}
+
+				new IdentifierSuggestModal(
+					this.app,
+					this,
+					(id) => this.insertComment(editor, id),
+					true,
+				).open();
 			},
 		});
 
@@ -530,6 +526,32 @@ export default class AnnotationManagerPlugin extends Plugin {
 		for (const view of this.editorViews) {
 			view.dispatch({});
 		}
+	}
+
+	private insertComment(editor: Editor, id: string): void {
+		const idPart = id ? `{${id}}` : '';
+
+		const selected = editor.getSelection();
+		if (selected) {
+			const from = editor.getCursor('from');
+			const fromOffset = editor.posToOffset(from);
+			const annotations = parseAnnotations(editor.getValue());
+			const adjacentToAnnotation = annotations.some((a) => a.to === fromOffset);
+			const needsSpacer =
+				!id && adjacentToAnnotation && !this.settings.commentAutoInheritAdjacentTag;
+			const prefix = needsSpacer ? ' ' : '';
+			editor.replaceSelection(`${prefix}{@${idPart}${selected}@}`);
+			editor.focus();
+			return;
+		}
+
+		const cursor = editor.getCursor();
+		// Single blank space before and after the inserted marker.
+		const snippet = ` {@${idPart}@} `;
+		editor.replaceRange(snippet, cursor);
+		// Place cursor between the two '@' symbols (snippet ends with '@} ')
+		editor.setCursor({ line: cursor.line, ch: cursor.ch + snippet.length - 3 });
+		editor.focus();
 	}
 
 	private collectIdentifiers(): string[] {
@@ -929,6 +951,7 @@ class IdentifierSuggestModal extends SuggestModal<string> {
 		app: App,
 		private plugin: AnnotationManagerPlugin,
 		private onChoose: (id: string) => void,
+		private allowBlank = false,
 	) {
 		super(app);
 		this.setPlaceholder('Type to filter identifiers…');
@@ -947,11 +970,18 @@ class IdentifierSuggestModal extends SuggestModal<string> {
 		}
 
 		const q = query.toLowerCase();
-		return [...ids].sort().filter((id) => !q || id.toLowerCase().includes(q));
+		const filtered = [...ids].sort().filter((id) => !q || id.toLowerCase().includes(q));
+		// Blank ("no identifier") option is always first, and only offered
+		// while the query is empty.
+		return this.allowBlank && !q ? ['', ...filtered] : filtered;
 	}
 
 	renderSuggestion(id: string, el: HTMLElement): void {
 		const row = el.createDiv({ cls: 'cc-suggest-row' });
+		if (id === '') {
+			row.createEl('span', { text: 'No tag', cls: 'cc-suggest-id cc-suggest-blank' });
+			return;
+		}
 		row.createEl('span', { text: id, cls: 'cc-suggest-id' });
 		if (this.plugin.settings.identifierStyles[id]) {
 			row.createEl('span', { text: 'Styled', cls: 'cc-suggest-badge' });

@@ -8,6 +8,16 @@ export interface IdentifierStyle {
 	backgroundColor: string;
 }
 
+export interface DelimiterColorStyle {
+	fontColor: string;
+	backgroundColor: string;
+}
+
+export interface CommentDelimiterStyle {
+	light: DelimiterColorStyle;
+	dark: DelimiterColorStyle;
+}
+
 export interface AnnotationManagerSettings {
 	// Key is "parent/child", "parent/*", or "parent"
 	identifierStyles: Record<string, IdentifierStyle>;
@@ -24,6 +34,10 @@ export interface AnnotationManagerSettings {
 	commentBracketFormattingEnabled: boolean;
 	commentsHiddenEnabled: boolean;
 	commentsFormattingEnabled: boolean;
+
+	// Fixed fore/background color for the {@ / @} delimiter glyphs themselves
+	// (independent of tag color), per light/dark theme.
+	commentDelimiterStyle: CommentDelimiterStyle;
 
 	// When the "Add comment" command runs immediately after (zero-space) an
 	// annotation, insert a leading space by default so the comment does NOT
@@ -44,6 +58,11 @@ export const DEFAULT_SETTINGS: AnnotationManagerSettings = {
 	commentBracketFormattingEnabled: true,
 	commentsHiddenEnabled: false,
 	commentsFormattingEnabled: true,
+
+	commentDelimiterStyle: {
+		light: { fontColor: '', backgroundColor: '' },
+		dark: { fontColor: '', backgroundColor: '' },
+	},
 
 	commentAutoInheritAdjacentTag: false,
 };
@@ -366,7 +385,7 @@ function attachTypeahead(
 export class AnnotationManagerSettingTab extends PluginSettingTab {
 	plugin: AnnotationManagerPlugin;
 	private pendingIdentifier = '';
-	private activeTab: 'general' | 'visibility' = 'general';
+	private activeTab: 'general' | 'annotations' | 'comments' = 'general';
 
 	constructor(app: App, plugin: AnnotationManagerPlugin) {
 		super(app, plugin);
@@ -381,10 +400,16 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
+		containerEl.createDiv({
+			cls: 'cc-settings-version',
+			text: `Annotation Manager v${this.plugin.manifest.version}`,
+		});
+
 		const tabBar = containerEl.createDiv('cc-tab-bar');
-		const tabs: Array<{ id: 'general' | 'visibility'; label: string }> = [
+		const tabs: Array<{ id: 'general' | 'annotations' | 'comments'; label: string }> = [
 			{ id: 'general', label: 'General' },
-			{ id: 'visibility', label: 'Visibility' },
+			{ id: 'annotations', label: 'Annotations' },
+			{ id: 'comments', label: 'Comments' },
 		];
 		for (const tab of tabs) {
 			const btn = tabBar.createEl('button', {
@@ -397,8 +422,12 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			});
 		}
 
-		if (this.activeTab === 'visibility') {
-			this.renderVisibilityTab(containerEl);
+		if (this.activeTab === 'annotations') {
+			this.renderAnnotationsTab(containerEl);
+			return;
+		}
+		if (this.activeTab === 'comments') {
+			this.renderCommentsTab(containerEl);
 			return;
 		}
 
@@ -447,7 +476,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		}
 	}
 
-	private renderVisibilityTab(containerEl: HTMLElement): void {
+	private renderAnnotationsTab(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName('Annotations').setHeading();
 
 		this.renderToggle(
@@ -480,7 +509,9 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 				this.plugin.settings.textFormattingEnabled = v;
 			},
 		);
+	}
 
+	private renderCommentsTab(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName('Comments').setHeading();
 
 		this.renderToggle(
@@ -537,6 +568,52 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}),
 			);
+
+		new Setting(containerEl).setName('Comment delimiter').setHeading();
+		containerEl.createEl('p', {
+			text:
+				'Color the {@ and @} delimiter characters shown when brackets are not hidden, ' +
+				'independent of tag color.',
+			cls: 'setting-item-description',
+		});
+
+		this.renderDelimiterThemeSettings(containerEl, 'Light theme', 'light');
+		this.renderDelimiterThemeSettings(containerEl, 'Dark theme', 'dark');
+	}
+
+	private renderDelimiterThemeSettings(
+		containerEl: HTMLElement,
+		label: string,
+		theme: 'light' | 'dark',
+	): void {
+		const wrap = containerEl.createDiv('cc-identifier-block');
+		new Setting(wrap).setName(label).setHeading();
+
+		const style = this.plugin.settings.commentDelimiterStyle[theme];
+
+		this.renderColorSetting(
+			wrap,
+			'Text color',
+			`Hex color for the delimiter text in ${label.toLowerCase()}`,
+			() => style.fontColor,
+			async (v) => {
+				style.fontColor = v;
+				await this.plugin.saveSettings();
+				this.plugin.bumpStyleVersion();
+			},
+		);
+
+		this.renderColorSetting(
+			wrap,
+			'Background color',
+			`Hex color for the delimiter background in ${label.toLowerCase()}`,
+			() => style.backgroundColor,
+			async (v) => {
+				style.backgroundColor = v;
+				await this.plugin.saveSettings();
+				this.plugin.bumpStyleVersion();
+			},
+		);
 	}
 
 	private renderToggle(
