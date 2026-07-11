@@ -4,6 +4,7 @@ import type AnnotationManagerPlugin from './main';
 export interface GroupedEntry {
 	text: string;
 	line: number;
+	from: number;
 }
 
 export interface GroupedSection {
@@ -35,7 +36,7 @@ export function renderGroupedSidebar(
 		? root.querySelector<HTMLInputElement>('.cc-sidebar-search-input')
 		: null;
 	const searchHadFocus = !!prevSearchInput && prevSearchInput === activeDocument.activeElement;
-	const searchCursorPos = searchHadFocus ? prevSearchInput!.selectionStart : null;
+	const searchCursorPos = searchHadFocus ? prevSearchInput.selectionStart : null;
 
 	root.empty();
 	root.addClass('cc-sidebar');
@@ -116,7 +117,7 @@ export function renderGroupedSidebar(
 			});
 
 			item.addEventListener('click', () => {
-				void jumpToLine(app, filePath, entry.line);
+				void jumpToLine(app, filePath, entry.from);
 			});
 		}
 	}
@@ -147,28 +148,73 @@ interface ToggleButtonSpec {
 	label: string;
 	tooltip: string;
 	commandId: string;
+	isEnabled: (plugin: AnnotationManagerPlugin) => boolean;
 }
 
 const ANNOTATION_ROW: ToggleButtonSpec[] = [
-	{ label: 'A-F', tooltip: 'Toggle annotation text formatting', commandId: 'toggle-text-formatting' },
-	{ label: 'B-V', tooltip: 'Toggle annotation bracket visibility', commandId: 'toggle-syntax-hiding' },
+	{
+		label: 'A-F',
+		tooltip: 'Toggle annotation text formatting',
+		commandId: 'toggle-text-formatting',
+		isEnabled: (p) => p.textFormattingEnabled,
+	},
+	{
+		label: 'B-V',
+		tooltip: 'Toggle annotation bracket visibility',
+		commandId: 'toggle-syntax-hiding',
+		isEnabled: (p) => p.syntaxHidingEnabled,
+	},
 	{
 		label: 'B-F',
 		tooltip: 'Toggle annotation bracket formatting',
 		commandId: 'toggle-identifier-formatting',
+		isEnabled: (p) => p.identifierFormattingEnabled,
 	},
 ];
 
 const COMMENT_ROW: ToggleButtonSpec[] = [
-	{ label: 'C-V', tooltip: 'Toggle comment text visibility', commandId: 'toggle-comments-visibility' },
-	{ label: 'C-F', tooltip: 'Toggle comment text formatting', commandId: 'toggle-comments-formatting' },
-	{ label: 'B-V', tooltip: 'Toggle comment bracket visibility', commandId: 'toggle-comment-brackets' },
+	{
+		label: 'C-V',
+		tooltip: 'Toggle comment text visibility',
+		commandId: 'toggle-comments-visibility',
+		isEnabled: (p) => p.commentsHiddenEnabled,
+	},
+	{
+		label: 'C-F',
+		tooltip: 'Toggle comment text formatting',
+		commandId: 'toggle-comments-formatting',
+		isEnabled: (p) => p.commentsFormattingEnabled,
+	},
+	{
+		label: 'B-V',
+		tooltip: 'Toggle comment bracket visibility',
+		commandId: 'toggle-comment-brackets',
+		isEnabled: (p) => p.commentBracketsHiddenEnabled,
+	},
 	{
 		label: 'B-F',
 		tooltip: 'Toggle comment bracket formatting',
 		commandId: 'toggle-comment-bracket-formatting',
+		isEnabled: (p) => p.commentBracketFormattingEnabled,
 	},
 ];
+
+// Applies the settings-configured enabled/disabled color for the current
+// Obsidian theme directly to the button (same inline-style idiom the plugin
+// uses elsewhere for theme-dependent colors — see decoration.ts's isDarkTheme).
+function applyToggleButtonState(
+	btn: HTMLElement,
+	plugin: AnnotationManagerPlugin,
+	enabled: boolean,
+): void {
+	const theme = activeDocument.body.classList.contains('theme-dark') ? 'dark' : 'light';
+	const state = enabled ? 'enabled' : 'disabled';
+	const style = plugin.settings.sidebarButtonStyle[theme][state];
+	btn.setCssStyles({
+		color: style.fontColor || '',
+		backgroundColor: style.backgroundColor || '',
+	});
+}
 
 // Rendered unconditionally (even with no file open / no entries), always
 // appended after everything else `renderGroupedSidebar` builds, so it sits
@@ -195,7 +241,8 @@ export function renderSidebarToggleRows(
 			cls: 'cc-toggle-btn',
 			attr: { title: spec.tooltip },
 		});
-		btn.addEventListener('click', () => plugin.runCommand(spec.commandId));
+		applyToggleButtonState(btn, plugin, spec.isEnabled(plugin));
+		btn.addEventListener('click', () => plugin.runCommand(spec.commandId, { silent: true }));
 	}
 
 	const bottomRow = panel.createDiv('cc-sidebar-toggle-row');
@@ -205,11 +252,15 @@ export function renderSidebarToggleRows(
 			cls: 'cc-toggle-btn',
 			attr: { title: spec.tooltip },
 		});
-		btn.addEventListener('click', () => plugin.runCommand(spec.commandId));
+		applyToggleButtonState(btn, plugin, spec.isEnabled(plugin));
+		btn.addEventListener('click', () => plugin.runCommand(spec.commandId, { silent: true }));
 	}
 }
 
-async function jumpToLine(app: App, filePath: string, line: number): Promise<void> {
+// `from` is the entry's absolute character offset in the document (as produced
+// by the parser), used to select the whole line while placing the cursor
+// precisely at the start of the annotation/comment marker rather than ch 0.
+async function jumpToLine(app: App, filePath: string, from: number): Promise<void> {
 	const file = app.vault.getAbstractFileByPath(filePath);
 	if (!(file instanceof TFile)) return;
 
@@ -232,10 +283,14 @@ async function jumpToLine(app: App, filePath: string, line: number): Promise<voi
 
 	const view = leaf.view;
 	if (view instanceof MarkdownView) {
-		const pos = { line: Math.max(0, line - 1), ch: 0 };
-		view.editor.setCursor(pos);
-		view.editor.scrollIntoView({ from: pos, to: pos }, true);
+		const editor = view.editor;
+		const headPos = editor.offsetToPos(from);
+		const anchorPos = { line: headPos.line, ch: editor.getLine(headPos.line).length };
+		// Anchor at line end, head (blinking cursor) at the entry's start — selects
+		// the rest of the line while keeping the cursor at the marker's beginning.
+		editor.setSelection(anchorPos, headPos);
+		editor.scrollIntoView({ from: headPos, to: anchorPos }, true);
 		// Also covers reading/preview mode
-		view.setEphemeralState({ line: pos.line });
+		view.setEphemeralState({ line: headPos.line });
 	}
 }

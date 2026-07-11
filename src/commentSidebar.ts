@@ -47,12 +47,12 @@ export class CommentSidebarView extends ItemView {
 		const noTag: GroupedSection['entries'] = [];
 		for (const c of comments) {
 			if (!c.parent) {
-				noTag.push({ text: c.text, line: c.line });
+				noTag.push({ text: c.text, line: c.line, from: c.from });
 				continue;
 			}
 			const key = c.child ? `${c.parent}/${c.child}` : c.parent;
 			if (!byId.has(key)) byId.set(key, []);
-			byId.get(key)!.push({ text: c.text, line: c.line });
+			byId.get(key)!.push({ text: c.text, line: c.line, from: c.from });
 		}
 
 		const sections: GroupedSection[] = [...byId.keys()]

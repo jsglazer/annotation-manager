@@ -406,6 +406,14 @@
 	font-weight: 700;
 }
 
+/* Level-2 sub-headings (e.g. "Light theme" / "Dark theme" nested under a
+   level-1 group like "Comment delimiter") — smaller and indented. */
+.cc-settings-tab .setting-item-heading.cc-setting-heading-lvl2 .setting-item-name {
+	font-size: 1em;
+	font-weight: 600;
+	padding-left: 12px;
+}
+
 .cc-tab-btn-active {
 	color: var(--text-accent);
 	border-bottom-color: var(--interactive-accent);

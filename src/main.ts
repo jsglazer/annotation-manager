@@ -88,6 +88,9 @@ export default class AnnotationManagerPlugin extends Plugin {
 	commentsFormattingEnabled = true; // applies tag color to the comment text content
 
 	lastUsedIdentifier: string | null = null;
+	// Set for the duration of a runCommand(..., { silent: true }) call so the
+	// invoked toggle command's own Notice is skipped (sidebar button clicks).
+	private suppressNextNotice = false;
 
 	readonly editorViews = new Set<EditorView>();
 
@@ -187,6 +190,31 @@ export default class AnnotationManagerPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: 'comment-and-annotate',
+			name: 'Comment & annotate',
+			editorCallback: (editor: Editor) => {
+				const selected = editor.getSelection();
+				if (!selected) {
+					new Notice('Select text to use comment & annotation');
+					return;
+				}
+				const from = editor.getCursor('from');
+				new IdentifierSuggestModal(this.app, this, (id) => {
+					this.lastUsedIdentifier = id;
+					const annotationPart = `{={${id}}${selected}=}`;
+					const commentPart = `{@{${id}}@}`;
+					editor.replaceSelection(annotationPart + commentPart);
+					// Place cursor inside the empty adjacent comment, between } and @}
+					const fromOffset = editor.posToOffset(from);
+					const cursorOffset =
+						fromOffset + annotationPart.length + commentPart.length - 2;
+					editor.setCursor(editor.offsetToPos(cursorOffset));
+					editor.focus();
+				}).open();
+			},
+		});
+
+		this.addCommand({
 			id: 'apply-last-identifier',
 			name: 'Apply last identifier to selection',
 			editorCallback: (editor: Editor) => {
@@ -215,7 +243,10 @@ export default class AnnotationManagerPlugin extends Plugin {
 				this.settings.syntaxHidingEnabled = this.syntaxHidingEnabled;
 				void this.saveSettings();
 				this.bumpStyleVersion();
-				new Notice(`Annotation brackets ${this.syntaxHidingEnabled ? 'hidden' : 'visible'}`);
+				this.refreshSidebar();
+				if (!this.suppressNextNotice) {
+					new Notice(`Annotation brackets ${this.syntaxHidingEnabled ? 'hidden' : 'visible'}`);
+				}
 			},
 		});
 
@@ -227,9 +258,12 @@ export default class AnnotationManagerPlugin extends Plugin {
 				this.settings.identifierFormattingEnabled = this.identifierFormattingEnabled;
 				void this.saveSettings();
 				this.bumpStyleVersion();
-				new Notice(
-					`Annotation bracket/identifier formatting ${this.identifierFormattingEnabled ? 'enabled' : 'disabled'}`,
-				);
+				this.refreshSidebar();
+				if (!this.suppressNextNotice) {
+					new Notice(
+						`Annotation bracket/identifier formatting ${this.identifierFormattingEnabled ? 'enabled' : 'disabled'}`,
+					);
+				}
 			},
 		});
 
@@ -241,9 +275,12 @@ export default class AnnotationManagerPlugin extends Plugin {
 				this.settings.textFormattingEnabled = this.textFormattingEnabled;
 				void this.saveSettings();
 				this.bumpStyleVersion();
-				new Notice(
-					`Annotation text formatting ${this.textFormattingEnabled ? 'enabled' : 'disabled'}`,
-				);
+				this.refreshSidebar();
+				if (!this.suppressNextNotice) {
+					new Notice(
+						`Annotation text formatting ${this.textFormattingEnabled ? 'enabled' : 'disabled'}`,
+					);
+				}
 			},
 		});
 
@@ -255,7 +292,10 @@ export default class AnnotationManagerPlugin extends Plugin {
 				this.settings.commentBracketsHiddenEnabled = this.commentBracketsHiddenEnabled;
 				void this.saveSettings();
 				this.bumpStyleVersion();
-				new Notice(`Comment brackets ${this.commentBracketsHiddenEnabled ? 'hidden' : 'visible'}`);
+				this.refreshSidebar();
+				if (!this.suppressNextNotice) {
+					new Notice(`Comment brackets ${this.commentBracketsHiddenEnabled ? 'hidden' : 'visible'}`);
+				}
 			},
 		});
 
@@ -267,9 +307,12 @@ export default class AnnotationManagerPlugin extends Plugin {
 				this.settings.commentBracketFormattingEnabled = this.commentBracketFormattingEnabled;
 				void this.saveSettings();
 				this.bumpStyleVersion();
-				new Notice(
-					`Comment bracket formatting ${this.commentBracketFormattingEnabled ? 'enabled' : 'disabled'}`,
-				);
+				this.refreshSidebar();
+				if (!this.suppressNextNotice) {
+					new Notice(
+						`Comment bracket formatting ${this.commentBracketFormattingEnabled ? 'enabled' : 'disabled'}`,
+					);
+				}
 			},
 		});
 
@@ -281,7 +324,10 @@ export default class AnnotationManagerPlugin extends Plugin {
 				this.settings.commentsHiddenEnabled = this.commentsHiddenEnabled;
 				void this.saveSettings();
 				this.bumpStyleVersion();
-				new Notice(`Comments ${this.commentsHiddenEnabled ? 'hidden' : 'visible'}`);
+				this.refreshSidebar();
+				if (!this.suppressNextNotice) {
+					new Notice(`Comments ${this.commentsHiddenEnabled ? 'hidden' : 'visible'}`);
+				}
 			},
 		});
 
@@ -293,9 +339,12 @@ export default class AnnotationManagerPlugin extends Plugin {
 				this.settings.commentsFormattingEnabled = this.commentsFormattingEnabled;
 				void this.saveSettings();
 				this.bumpStyleVersion();
-				new Notice(
-					`Comment text formatting ${this.commentsFormattingEnabled ? 'enabled' : 'disabled'}`,
-				);
+				this.refreshSidebar();
+				if (!this.suppressNextNotice) {
+					new Notice(
+						`Comment text formatting ${this.commentsFormattingEnabled ? 'enabled' : 'disabled'}`,
+					);
+				}
 			},
 		});
 
@@ -454,12 +503,18 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 	// Runs a plugin command by its unprefixed id (e.g. 'toggle-text-formatting'),
 	// for the sidebar toggle-button rows. Obsidian's command execution API is
-	// undocumented/internal, hence the local cast.
-	runCommand(id: string): void {
+	// undocumented/internal, hence the local cast. `silent` skips that command's
+	// own Notice — used for sidebar button clicks, but not Command Palette/hotkey.
+	runCommand(id: string, opts?: { silent?: boolean }): void {
 		const commands = (
 			this.app as unknown as { commands: { executeCommandById(id: string): boolean } }
 		).commands;
-		commands.executeCommandById(`${this.manifest.id}:${id}`);
+		if (opts?.silent) this.suppressNextNotice = true;
+		try {
+			commands.executeCommandById(`${this.manifest.id}:${id}`);
+		} finally {
+			this.suppressNextNotice = false;
+		}
 	}
 
 	private async toggleSidebarView(viewType: string): Promise<void> {

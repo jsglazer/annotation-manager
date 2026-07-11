@@ -38,7 +38,7 @@ export class AnnotationSidebarView extends ItemView {
 		for (const ann of annotations) {
 			const key = ann.child ? `${ann.parent}/${ann.child}` : ann.parent;
 			if (!byId.has(key)) byId.set(key, []);
-			byId.get(key)!.push({ text: ann.text, line: ann.line });
+			byId.get(key)!.push({ text: ann.text, line: ann.line, from: ann.from });
 		}
 
 		const sections: GroupedSection[] = [...byId.keys()]

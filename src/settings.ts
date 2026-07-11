@@ -23,6 +23,16 @@ export interface CommentContentStyle {
 	dark: DelimiterColorStyle;
 }
 
+export interface SidebarButtonStateStyle {
+	enabled: DelimiterColorStyle;
+	disabled: DelimiterColorStyle;
+}
+
+export interface SidebarButtonStyle {
+	light: SidebarButtonStateStyle;
+	dark: SidebarButtonStateStyle;
+}
+
 export interface AnnotationManagerSettings {
 	// Key is "parent/child", "parent/*", or "parent"
 	identifierStyles: Record<string, IdentifierStyle>;
@@ -53,6 +63,10 @@ export interface AnnotationManagerSettings {
 	// annotation, skip the identifier picker and inherit that annotation's tag
 	// instead of prompting the user.
 	commentAutoInheritAdjacentTag: boolean;
+
+	// Colors for the sidebar toggle-button rows (all buttons except SB), per
+	// light/dark theme, reflecting whether each button's function is on or off.
+	sidebarButtonStyle: SidebarButtonStyle;
 }
 
 export const DEFAULT_SETTINGS: AnnotationManagerSettings = {
@@ -80,6 +94,17 @@ export const DEFAULT_SETTINGS: AnnotationManagerSettings = {
 	},
 
 	commentAutoInheritAdjacentTag: true,
+
+	sidebarButtonStyle: {
+		light: {
+			enabled: { fontColor: '#ffffff', backgroundColor: '#4a90e2' },
+			disabled: { fontColor: '#8a8a8a', backgroundColor: '#e8e8e8' },
+		},
+		dark: {
+			enabled: { fontColor: '#ffffff', backgroundColor: '#4a90e2' },
+			disabled: { fontColor: '#a0a0a0', backgroundColor: '#3a3a3a' },
+		},
+	},
 };
 
 export const EMPTY_STYLE: IdentifierStyle = {
@@ -400,7 +425,7 @@ function attachTypeahead(
 export class AnnotationManagerSettingTab extends PluginSettingTab {
 	plugin: AnnotationManagerPlugin;
 	private pendingIdentifier = '';
-	private activeTab: 'general' | 'annotations' | 'comments' = 'general';
+	private activeTab: 'general' | 'annotations' | 'comments' | 'sidebar' = 'general';
 
 	constructor(app: App, plugin: AnnotationManagerPlugin) {
 		super(app, plugin);
@@ -422,10 +447,11 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		});
 
 		const tabBar = containerEl.createDiv('cc-tab-bar');
-		const tabs: Array<{ id: 'general' | 'annotations' | 'comments'; label: string }> = [
+		const tabs: Array<{ id: 'general' | 'annotations' | 'comments' | 'sidebar'; label: string }> = [
 			{ id: 'general', label: 'General' },
 			{ id: 'annotations', label: 'Annotations' },
 			{ id: 'comments', label: 'Comments' },
+			{ id: 'sidebar', label: 'Sidebar' },
 		];
 		for (const tab of tabs) {
 			const btn = tabBar.createEl('button', {
@@ -444,6 +470,10 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		}
 		if (this.activeTab === 'comments') {
 			this.renderCommentsTab(containerEl);
+			return;
+		}
+		if (this.activeTab === 'sidebar') {
+			this.renderSidebarTab(containerEl);
 			return;
 		}
 
@@ -635,7 +665,8 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		style: DelimiterColorStyle,
 	): void {
 		const wrap = containerEl.createDiv('cc-identifier-block');
-		new Setting(wrap).setName(label).setHeading();
+		const heading = new Setting(wrap).setName(label).setHeading();
+		heading.settingEl.addClass('cc-setting-heading-lvl2');
 
 		this.renderColorSetting(
 			wrap,
@@ -658,6 +689,83 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 				style.backgroundColor = v;
 				await this.plugin.saveSettings();
 				this.plugin.bumpStyleVersion();
+			},
+		);
+	}
+
+	private renderSidebarTab(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('Sidebar button colors').setHeading();
+		containerEl.createEl('p', {
+			text:
+				'Colors applied to the sidebar toggle buttons (A-F, B-V, B-F, C-V, C-F) based on ' +
+				"whether that button's function is currently on or off. The SB button is unaffected.",
+			cls: 'setting-item-description',
+		});
+
+		this.renderSidebarButtonThemeBlock(
+			containerEl,
+			'Light theme',
+			this.plugin.settings.sidebarButtonStyle.light,
+		);
+		this.renderSidebarButtonThemeBlock(
+			containerEl,
+			'Dark theme',
+			this.plugin.settings.sidebarButtonStyle.dark,
+		);
+	}
+
+	private renderSidebarButtonThemeBlock(
+		containerEl: HTMLElement,
+		label: string,
+		style: SidebarButtonStateStyle,
+	): void {
+		const wrap = containerEl.createDiv('cc-identifier-block');
+		const heading = new Setting(wrap).setName(label).setHeading();
+		heading.settingEl.addClass('cc-setting-heading-lvl2');
+
+		const refresh = async () => {
+			await this.plugin.saveSettings();
+			this.plugin.refreshSidebar();
+		};
+
+		this.renderColorSetting(
+			wrap,
+			'Enabled text color',
+			`Text color for an enabled button in ${label.toLowerCase()}`,
+			() => style.enabled.fontColor,
+			async (v) => {
+				style.enabled.fontColor = v;
+				await refresh();
+			},
+		);
+		this.renderColorSetting(
+			wrap,
+			'Enabled background color',
+			`Background color for an enabled button in ${label.toLowerCase()}`,
+			() => style.enabled.backgroundColor,
+			async (v) => {
+				style.enabled.backgroundColor = v;
+				await refresh();
+			},
+		);
+		this.renderColorSetting(
+			wrap,
+			'Disabled text color',
+			`Text color for a disabled button in ${label.toLowerCase()}`,
+			() => style.disabled.fontColor,
+			async (v) => {
+				style.disabled.fontColor = v;
+				await refresh();
+			},
+		);
+		this.renderColorSetting(
+			wrap,
+			'Disabled background color',
+			`Background color for a disabled button in ${label.toLowerCase()}`,
+			() => style.disabled.backgroundColor,
+			async (v) => {
+				style.disabled.backgroundColor = v;
+				await refresh();
 			},
 		);
 	}

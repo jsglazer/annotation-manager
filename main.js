@@ -52,7 +52,17 @@ var DEFAULT_SETTINGS = {
     light: { fontColor: "", backgroundColor: "" },
     dark: { fontColor: "", backgroundColor: "" }
   },
-  commentAutoInheritAdjacentTag: true
+  commentAutoInheritAdjacentTag: true,
+  sidebarButtonStyle: {
+    light: {
+      enabled: { fontColor: "#ffffff", backgroundColor: "#4a90e2" },
+      disabled: { fontColor: "#8a8a8a", backgroundColor: "#e8e8e8" }
+    },
+    dark: {
+      enabled: { fontColor: "#ffffff", backgroundColor: "#4a90e2" },
+      disabled: { fontColor: "#a0a0a0", backgroundColor: "#3a3a3a" }
+    }
+  }
 };
 var EMPTY_STYLE = {
   fontSize: "",
@@ -287,7 +297,8 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     const tabs = [
       { id: "general", label: "General" },
       { id: "annotations", label: "Annotations" },
-      { id: "comments", label: "Comments" }
+      { id: "comments", label: "Comments" },
+      { id: "sidebar", label: "Sidebar" }
     ];
     for (const tab of tabs) {
       const btn = tabBar.createEl("button", {
@@ -305,6 +316,10 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     }
     if (this.activeTab === "comments") {
       this.renderCommentsTab(containerEl);
+      return;
+    }
+    if (this.activeTab === "sidebar") {
+      this.renderSidebarTab(containerEl);
       return;
     }
     const infoPanel = containerEl.createDiv({ cls: "cc-info-panel" });
@@ -461,7 +476,8 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
   }
   renderThemeColorBlock(containerEl, label, noun, style) {
     const wrap = containerEl.createDiv("cc-identifier-block");
-    new import_obsidian.Setting(wrap).setName(label).setHeading();
+    const heading = new import_obsidian.Setting(wrap).setName(label).setHeading();
+    heading.settingEl.addClass("cc-setting-heading-lvl2");
     this.renderColorSetting(
       wrap,
       "Text color",
@@ -482,6 +498,72 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
         style.backgroundColor = v;
         await this.plugin.saveSettings();
         this.plugin.bumpStyleVersion();
+      }
+    );
+  }
+  renderSidebarTab(containerEl) {
+    new import_obsidian.Setting(containerEl).setName("Sidebar button colors").setHeading();
+    containerEl.createEl("p", {
+      text: "Colors applied to the sidebar toggle buttons (A-F, B-V, B-F, C-V, C-F) based on whether that button's function is currently on or off. The SB button is unaffected.",
+      cls: "setting-item-description"
+    });
+    this.renderSidebarButtonThemeBlock(
+      containerEl,
+      "Light theme",
+      this.plugin.settings.sidebarButtonStyle.light
+    );
+    this.renderSidebarButtonThemeBlock(
+      containerEl,
+      "Dark theme",
+      this.plugin.settings.sidebarButtonStyle.dark
+    );
+  }
+  renderSidebarButtonThemeBlock(containerEl, label, style) {
+    const wrap = containerEl.createDiv("cc-identifier-block");
+    const heading = new import_obsidian.Setting(wrap).setName(label).setHeading();
+    heading.settingEl.addClass("cc-setting-heading-lvl2");
+    const refresh = async () => {
+      await this.plugin.saveSettings();
+      this.plugin.refreshSidebar();
+    };
+    this.renderColorSetting(
+      wrap,
+      "Enabled text color",
+      `Text color for an enabled button in ${label.toLowerCase()}`,
+      () => style.enabled.fontColor,
+      async (v) => {
+        style.enabled.fontColor = v;
+        await refresh();
+      }
+    );
+    this.renderColorSetting(
+      wrap,
+      "Enabled background color",
+      `Background color for an enabled button in ${label.toLowerCase()}`,
+      () => style.enabled.backgroundColor,
+      async (v) => {
+        style.enabled.backgroundColor = v;
+        await refresh();
+      }
+    );
+    this.renderColorSetting(
+      wrap,
+      "Disabled text color",
+      `Text color for a disabled button in ${label.toLowerCase()}`,
+      () => style.disabled.fontColor,
+      async (v) => {
+        style.disabled.fontColor = v;
+        await refresh();
+      }
+    );
+    this.renderColorSetting(
+      wrap,
+      "Disabled background color",
+      `Background color for a disabled button in ${label.toLowerCase()}`,
+      () => style.disabled.backgroundColor,
+      async (v) => {
+        style.disabled.backgroundColor = v;
+        await refresh();
       }
     );
   }
@@ -1114,7 +1196,7 @@ function renderGroupedSidebar(app, root, filePath, sections, expandedSections, e
         cls: "cc-sidebar-text"
       });
       item.addEventListener("click", () => {
-        void jumpToLine(app, filePath, entry.line);
+        void jumpToLine(app, filePath, entry.from);
       });
     }
   }
@@ -1134,24 +1216,60 @@ function renderGroupedSidebar(app, root, filePath, sections, expandedSections, e
   });
 }
 var ANNOTATION_ROW = [
-  { label: "A-F", tooltip: "Toggle annotation text formatting", commandId: "toggle-text-formatting" },
-  { label: "B-V", tooltip: "Toggle annotation bracket visibility", commandId: "toggle-syntax-hiding" },
+  {
+    label: "A-F",
+    tooltip: "Toggle annotation text formatting",
+    commandId: "toggle-text-formatting",
+    isEnabled: (p) => p.textFormattingEnabled
+  },
+  {
+    label: "B-V",
+    tooltip: "Toggle annotation bracket visibility",
+    commandId: "toggle-syntax-hiding",
+    isEnabled: (p) => p.syntaxHidingEnabled
+  },
   {
     label: "B-F",
     tooltip: "Toggle annotation bracket formatting",
-    commandId: "toggle-identifier-formatting"
+    commandId: "toggle-identifier-formatting",
+    isEnabled: (p) => p.identifierFormattingEnabled
   }
 ];
 var COMMENT_ROW = [
-  { label: "C-V", tooltip: "Toggle comment text visibility", commandId: "toggle-comments-visibility" },
-  { label: "C-F", tooltip: "Toggle comment text formatting", commandId: "toggle-comments-formatting" },
-  { label: "B-V", tooltip: "Toggle comment bracket visibility", commandId: "toggle-comment-brackets" },
+  {
+    label: "C-V",
+    tooltip: "Toggle comment text visibility",
+    commandId: "toggle-comments-visibility",
+    isEnabled: (p) => p.commentsHiddenEnabled
+  },
+  {
+    label: "C-F",
+    tooltip: "Toggle comment text formatting",
+    commandId: "toggle-comments-formatting",
+    isEnabled: (p) => p.commentsFormattingEnabled
+  },
+  {
+    label: "B-V",
+    tooltip: "Toggle comment bracket visibility",
+    commandId: "toggle-comment-brackets",
+    isEnabled: (p) => p.commentBracketsHiddenEnabled
+  },
   {
     label: "B-F",
     tooltip: "Toggle comment bracket formatting",
-    commandId: "toggle-comment-bracket-formatting"
+    commandId: "toggle-comment-bracket-formatting",
+    isEnabled: (p) => p.commentBracketFormattingEnabled
   }
 ];
+function applyToggleButtonState(btn, plugin, enabled) {
+  const theme = activeDocument.body.classList.contains("theme-dark") ? "dark" : "light";
+  const state = enabled ? "enabled" : "disabled";
+  const style = plugin.settings.sidebarButtonStyle[theme][state];
+  btn.setCssStyles({
+    color: style.fontColor || "",
+    backgroundColor: style.backgroundColor || ""
+  });
+}
 function renderSidebarToggleRows(root, plugin, ownViewType) {
   const panel = root.createDiv("cc-sidebar-toggle-panel");
   const topRow = panel.createDiv("cc-sidebar-toggle-row");
@@ -1169,7 +1287,8 @@ function renderSidebarToggleRows(root, plugin, ownViewType) {
       cls: "cc-toggle-btn",
       attr: { title: spec.tooltip }
     });
-    btn.addEventListener("click", () => plugin.runCommand(spec.commandId));
+    applyToggleButtonState(btn, plugin, spec.isEnabled(plugin));
+    btn.addEventListener("click", () => plugin.runCommand(spec.commandId, { silent: true }));
   }
   const bottomRow = panel.createDiv("cc-sidebar-toggle-row");
   for (const spec of COMMENT_ROW) {
@@ -1178,10 +1297,11 @@ function renderSidebarToggleRows(root, plugin, ownViewType) {
       cls: "cc-toggle-btn",
       attr: { title: spec.tooltip }
     });
-    btn.addEventListener("click", () => plugin.runCommand(spec.commandId));
+    applyToggleButtonState(btn, plugin, spec.isEnabled(plugin));
+    btn.addEventListener("click", () => plugin.runCommand(spec.commandId, { silent: true }));
   }
 }
-async function jumpToLine(app, filePath, line) {
+async function jumpToLine(app, filePath, from) {
   const file = app.vault.getAbstractFileByPath(filePath);
   if (!(file instanceof import_obsidian2.TFile)) return;
   const existing = app.workspace.getLeavesOfType("markdown").find((l) => {
@@ -1199,10 +1319,12 @@ async function jumpToLine(app, filePath, line) {
   await new Promise((r) => window.setTimeout(r, 50));
   const view = leaf.view;
   if (view instanceof import_obsidian2.MarkdownView) {
-    const pos = { line: Math.max(0, line - 1), ch: 0 };
-    view.editor.setCursor(pos);
-    view.editor.scrollIntoView({ from: pos, to: pos }, true);
-    view.setEphemeralState({ line: pos.line });
+    const editor = view.editor;
+    const headPos = editor.offsetToPos(from);
+    const anchorPos = { line: headPos.line, ch: editor.getLine(headPos.line).length };
+    editor.setSelection(anchorPos, headPos);
+    editor.scrollIntoView({ from: headPos, to: anchorPos }, true);
+    view.setEphemeralState({ line: headPos.line });
   }
 }
 
@@ -1236,7 +1358,7 @@ var AnnotationSidebarView = class extends import_obsidian3.ItemView {
     for (const ann of annotations) {
       const key = ann.child ? `${ann.parent}/${ann.child}` : ann.parent;
       if (!byId.has(key)) byId.set(key, []);
-      byId.get(key).push({ text: ann.text, line: ann.line });
+      byId.get(key).push({ text: ann.text, line: ann.line, from: ann.from });
     }
     const sections = [...byId.keys()].sort().map((key) => ({ key, entries: byId.get(key) }));
     renderGroupedSidebar(
@@ -1287,12 +1409,12 @@ var CommentSidebarView = class extends import_obsidian4.ItemView {
     const noTag = [];
     for (const c of comments) {
       if (!c.parent) {
-        noTag.push({ text: c.text, line: c.line });
+        noTag.push({ text: c.text, line: c.line, from: c.from });
         continue;
       }
       const key = c.child ? `${c.parent}/${c.child}` : c.parent;
       if (!byId.has(key)) byId.set(key, []);
-      byId.get(key).push({ text: c.text, line: c.line });
+      byId.get(key).push({ text: c.text, line: c.line, from: c.from });
     }
     const sections = [...byId.keys()].sort().map((key) => ({ key, entries: byId.get(key) }));
     if (noTag.length > 0) sections.push({ key: NO_TAG_KEY, entries: noTag });
@@ -1337,6 +1459,9 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     this.commentsFormattingEnabled = true;
     // applies tag color to the comment text content
     this.lastUsedIdentifier = null;
+    // Set for the duration of a runCommand(..., { silent: true }) call so the
+    // invoked toggle command's own Notice is skipped (sidebar button clicks).
+    this.suppressNextNotice = false;
     this.editorViews = /* @__PURE__ */ new Set();
     this.fileAnnotations = /* @__PURE__ */ new Map();
     this.fileComments = /* @__PURE__ */ new Map();
@@ -1418,6 +1543,28 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       }
     });
     this.addCommand({
+      id: "comment-and-annotate",
+      name: "Comment & annotate",
+      editorCallback: (editor) => {
+        const selected = editor.getSelection();
+        if (!selected) {
+          new import_obsidian5.Notice("Select text to use comment & annotation");
+          return;
+        }
+        const from = editor.getCursor("from");
+        new IdentifierSuggestModal(this.app, this, (id) => {
+          this.lastUsedIdentifier = id;
+          const annotationPart = `{={${id}}${selected}=}`;
+          const commentPart = `{@{${id}}@}`;
+          editor.replaceSelection(annotationPart + commentPart);
+          const fromOffset = editor.posToOffset(from);
+          const cursorOffset = fromOffset + annotationPart.length + commentPart.length - 2;
+          editor.setCursor(editor.offsetToPos(cursorOffset));
+          editor.focus();
+        }).open();
+      }
+    });
+    this.addCommand({
       id: "apply-last-identifier",
       name: "Apply last identifier to selection",
       editorCallback: (editor) => {
@@ -1445,7 +1592,10 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
         this.settings.syntaxHidingEnabled = this.syntaxHidingEnabled;
         void this.saveSettings();
         this.bumpStyleVersion();
-        new import_obsidian5.Notice(`Annotation brackets ${this.syntaxHidingEnabled ? "hidden" : "visible"}`);
+        this.refreshSidebar();
+        if (!this.suppressNextNotice) {
+          new import_obsidian5.Notice(`Annotation brackets ${this.syntaxHidingEnabled ? "hidden" : "visible"}`);
+        }
       }
     });
     this.addCommand({
@@ -1456,9 +1606,12 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
         this.settings.identifierFormattingEnabled = this.identifierFormattingEnabled;
         void this.saveSettings();
         this.bumpStyleVersion();
-        new import_obsidian5.Notice(
-          `Annotation bracket/identifier formatting ${this.identifierFormattingEnabled ? "enabled" : "disabled"}`
-        );
+        this.refreshSidebar();
+        if (!this.suppressNextNotice) {
+          new import_obsidian5.Notice(
+            `Annotation bracket/identifier formatting ${this.identifierFormattingEnabled ? "enabled" : "disabled"}`
+          );
+        }
       }
     });
     this.addCommand({
@@ -1469,9 +1622,12 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
         this.settings.textFormattingEnabled = this.textFormattingEnabled;
         void this.saveSettings();
         this.bumpStyleVersion();
-        new import_obsidian5.Notice(
-          `Annotation text formatting ${this.textFormattingEnabled ? "enabled" : "disabled"}`
-        );
+        this.refreshSidebar();
+        if (!this.suppressNextNotice) {
+          new import_obsidian5.Notice(
+            `Annotation text formatting ${this.textFormattingEnabled ? "enabled" : "disabled"}`
+          );
+        }
       }
     });
     this.addCommand({
@@ -1482,7 +1638,10 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
         this.settings.commentBracketsHiddenEnabled = this.commentBracketsHiddenEnabled;
         void this.saveSettings();
         this.bumpStyleVersion();
-        new import_obsidian5.Notice(`Comment brackets ${this.commentBracketsHiddenEnabled ? "hidden" : "visible"}`);
+        this.refreshSidebar();
+        if (!this.suppressNextNotice) {
+          new import_obsidian5.Notice(`Comment brackets ${this.commentBracketsHiddenEnabled ? "hidden" : "visible"}`);
+        }
       }
     });
     this.addCommand({
@@ -1493,9 +1652,12 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
         this.settings.commentBracketFormattingEnabled = this.commentBracketFormattingEnabled;
         void this.saveSettings();
         this.bumpStyleVersion();
-        new import_obsidian5.Notice(
-          `Comment bracket formatting ${this.commentBracketFormattingEnabled ? "enabled" : "disabled"}`
-        );
+        this.refreshSidebar();
+        if (!this.suppressNextNotice) {
+          new import_obsidian5.Notice(
+            `Comment bracket formatting ${this.commentBracketFormattingEnabled ? "enabled" : "disabled"}`
+          );
+        }
       }
     });
     this.addCommand({
@@ -1506,7 +1668,10 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
         this.settings.commentsHiddenEnabled = this.commentsHiddenEnabled;
         void this.saveSettings();
         this.bumpStyleVersion();
-        new import_obsidian5.Notice(`Comments ${this.commentsHiddenEnabled ? "hidden" : "visible"}`);
+        this.refreshSidebar();
+        if (!this.suppressNextNotice) {
+          new import_obsidian5.Notice(`Comments ${this.commentsHiddenEnabled ? "hidden" : "visible"}`);
+        }
       }
     });
     this.addCommand({
@@ -1517,9 +1682,12 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
         this.settings.commentsFormattingEnabled = this.commentsFormattingEnabled;
         void this.saveSettings();
         this.bumpStyleVersion();
-        new import_obsidian5.Notice(
-          `Comment text formatting ${this.commentsFormattingEnabled ? "enabled" : "disabled"}`
-        );
+        this.refreshSidebar();
+        if (!this.suppressNextNotice) {
+          new import_obsidian5.Notice(
+            `Comment text formatting ${this.commentsFormattingEnabled ? "enabled" : "disabled"}`
+          );
+        }
       }
     });
     this.registerEvent(
@@ -1649,10 +1817,16 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
   }
   // Runs a plugin command by its unprefixed id (e.g. 'toggle-text-formatting'),
   // for the sidebar toggle-button rows. Obsidian's command execution API is
-  // undocumented/internal, hence the local cast.
-  runCommand(id) {
+  // undocumented/internal, hence the local cast. `silent` skips that command's
+  // own Notice — used for sidebar button clicks, but not Command Palette/hotkey.
+  runCommand(id, opts) {
     const commands = this.app.commands;
-    commands.executeCommandById(`${this.manifest.id}:${id}`);
+    if (opts == null ? void 0 : opts.silent) this.suppressNextNotice = true;
+    try {
+      commands.executeCommandById(`${this.manifest.id}:${id}`);
+    } finally {
+      this.suppressNextNotice = false;
+    }
   }
   async toggleSidebarView(viewType) {
     const existing = this.app.workspace.getLeavesOfType(viewType);
