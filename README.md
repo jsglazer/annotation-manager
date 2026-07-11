@@ -26,10 +26,10 @@ Full documentation is in the [GitHub Wiki](https://github.com/jsglazer/annotatio
 - **Inline annotations** — wrap any text in `{={parent/child}your note=}` to tag it with an identifier
 - **Live Preview rendering** — delimiters and identifier are hidden; only the annotated text is shown, optionally styled
 - **Annotations sidebar** — lists the annotations in the note you currently have open, grouped by identifier, with one-click navigation; switches automatically as you move between notes
-- **Comments** — attach freeform notes with `{@your comment@}`, independent of annotations; a comment placed immediately after an annotation (no space) inherits its tag, or tag one explicitly with `{@{parent/child}your comment@}`
-- **Comments sidebar** — lists the current note's comments grouped by tag, with an untagged "No Tag" section, and the same one-click navigation as the Annotations sidebar
+- **Comments** — attach freeform notes with `{@your comment@}`, independent of annotations; the **Add comment** command prompts for a tag from the same list as **Apply identifier to selection** (pick "No tag" for an untagged comment), or tag one explicitly by typing `{@{parent/child}your comment@}`. A comment placed immediately after an annotation (no space) still inherits its tag when left untagged.
+- **Comments sidebar** — lists the current note's comments grouped by tag, with an untagged "No Tag" section (expanded by default; other sections start collapsed) and a search box to filter comments by text, plus the same one-click navigation as the Annotations sidebar
 - **Custom styling** — assign font color, background color, and font size to any identifier or wildcard pattern; comments reuse the same identifier styles when tagged
-- **Visibility controls** — a dedicated Settings → Visibility tab (and matching commands) to show/hide annotation and comment brackets, formatting, and — for comments — the entire comment
+- **Annotations & Comments visibility controls** — dedicated Settings tabs (and matching commands) to show/hide annotation and comment brackets, formatting, and — for comments — the entire comment; the Comments tab also lets you set a fixed fore/background color for the `{@`/`@}` delimiter itself, independent of tag color, for light and dark themes separately
 - **Dataview integration** — annotations are exposed as a `cc` field on each note's page object
 - **Config file support** — define identifier styles in a Markdown table in your vault; open the file in Reading Mode to get inline color pickers for instant color selection
 
@@ -43,9 +43,9 @@ This approach {={math/hot}maximizes the posterior=} under the prior.{@double-che
 ```
 
 1. Write an annotation using `{={identifier}text=}` syntax
-2. Add a comment with the **Add comment** command, or type `{@your comment@}` directly
+2. Add a comment with the **Add comment** command (pick a tag, or "No tag", from the prompt), or type `{@your comment@}` directly
 3. Open the sidebars via the ribbon icon or the **Show annotations sidebar** / **Show comments sidebar** commands
-4. Add styling under **Settings → Annotation Manager → Add Identifier**, and adjust what's shown under **Settings → Annotation Manager → Visibility**
+4. Add styling under **Settings → Annotation Manager → Add Identifier**, and adjust what's shown under the **Annotations** and **Comments** settings tabs
 
 ---
 
