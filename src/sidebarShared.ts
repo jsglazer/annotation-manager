@@ -247,6 +247,7 @@ export function renderSidebarToggleRows(
 	root: HTMLElement,
 	plugin: AnnotationManagerPlugin,
 	ownViewType: string,
+	isEmpty: boolean,
 ): void {
 	const panel = root.createDiv('cc-sidebar-toggle-panel');
 
@@ -256,6 +257,7 @@ export function renderSidebarToggleRows(
 		cls: 'cc-toggle-btn',
 		attr: { title: 'Switch annotations/comments sidebar' },
 	});
+	if (isEmpty) applyToggleButtonState(sbBtn, plugin, false);
 	sbBtn.addEventListener('click', () => {
 		flashSidebarButton(sbBtn, plugin);
 		window.setTimeout(() => {
@@ -268,7 +270,7 @@ export function renderSidebarToggleRows(
 			cls: 'cc-toggle-btn',
 			attr: { title: spec.tooltip },
 		});
-		applyToggleButtonState(btn, plugin, spec.isEnabled(plugin));
+		applyToggleButtonState(btn, plugin, isEmpty ? false : spec.isEnabled(plugin));
 		btn.addEventListener('click', () => plugin.runCommand(spec.commandId, { silent: true }));
 	}
 
@@ -279,7 +281,7 @@ export function renderSidebarToggleRows(
 			cls: 'cc-toggle-btn',
 			attr: { title: spec.tooltip },
 		});
-		applyToggleButtonState(btn, plugin, spec.isEnabled(plugin));
+		applyToggleButtonState(btn, plugin, isEmpty ? false : spec.isEnabled(plugin));
 		btn.addEventListener('click', () => plugin.runCommand(spec.commandId, { silent: true }));
 	}
 }

@@ -29,8 +29,8 @@ export class AnnotationSidebarView extends ItemView {
 
 	render(): void {
 		const root = this.containerEl.children[1] as HTMLElement;
-		const file = this.app.workspace.getActiveFile();
-		const filePath = file && file.extension === 'md' ? file.path : null;
+		const file = this.plugin.getActiveMarkdownFile();
+		const filePath = file ? file.path : null;
 		const annotations = filePath ? (this.plugin.getAllAnnotations().get(filePath) ?? []) : [];
 
 		// Group by identifier key (parent/child or parent)
@@ -54,6 +54,6 @@ export class AnnotationSidebarView extends ItemView {
 			this.expandedSections,
 			filePath ? 'No annotations found in this note.' : 'Open a note to see its annotations.',
 		);
-		renderSidebarToggleRows(root, this.plugin, SIDEBAR_VIEW_TYPE);
+		renderSidebarToggleRows(root, this.plugin, SIDEBAR_VIEW_TYPE, !this.plugin.hasAnyEntries(filePath));
 	}
 }

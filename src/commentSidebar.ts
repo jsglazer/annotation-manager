@@ -33,8 +33,8 @@ export class CommentSidebarView extends ItemView {
 
 	render(): void {
 		const root = this.containerEl.children[1] as HTMLElement;
-		const file = this.app.workspace.getActiveFile();
-		const filePath = file && file.extension === 'md' ? file.path : null;
+		const file = this.plugin.getActiveMarkdownFile();
+		const filePath = file ? file.path : null;
 		const allComments = filePath ? (this.plugin.getAllComments().get(filePath) ?? []) : [];
 		const query = this.searchQuery.trim().toLowerCase();
 		const comments = query
@@ -78,6 +78,11 @@ export class CommentSidebarView extends ItemView {
 					}
 				: undefined,
 		);
-		renderSidebarToggleRows(root, this.plugin, COMMENT_SIDEBAR_VIEW_TYPE);
+		renderSidebarToggleRows(
+			root,
+			this.plugin,
+			COMMENT_SIDEBAR_VIEW_TYPE,
+			!this.plugin.hasAnyEntries(filePath),
+		);
 	}
 }

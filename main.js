@@ -1315,7 +1315,7 @@ function flashSidebarButton(btn, plugin) {
     backgroundColor: style.backgroundColor || ""
   });
 }
-function renderSidebarToggleRows(root, plugin, ownViewType) {
+function renderSidebarToggleRows(root, plugin, ownViewType, isEmpty) {
   const panel = root.createDiv("cc-sidebar-toggle-panel");
   const topRow = panel.createDiv("cc-sidebar-toggle-row");
   const sbBtn = topRow.createEl("button", {
@@ -1323,6 +1323,7 @@ function renderSidebarToggleRows(root, plugin, ownViewType) {
     cls: "cc-toggle-btn",
     attr: { title: "Switch annotations/comments sidebar" }
   });
+  if (isEmpty) applyToggleButtonState(sbBtn, plugin, false);
   sbBtn.addEventListener("click", () => {
     flashSidebarButton(sbBtn, plugin);
     window.setTimeout(() => {
@@ -1335,7 +1336,7 @@ function renderSidebarToggleRows(root, plugin, ownViewType) {
       cls: "cc-toggle-btn",
       attr: { title: spec.tooltip }
     });
-    applyToggleButtonState(btn, plugin, spec.isEnabled(plugin));
+    applyToggleButtonState(btn, plugin, isEmpty ? false : spec.isEnabled(plugin));
     btn.addEventListener("click", () => plugin.runCommand(spec.commandId, { silent: true }));
   }
   const bottomRow = panel.createDiv("cc-sidebar-toggle-row");
@@ -1345,7 +1346,7 @@ function renderSidebarToggleRows(root, plugin, ownViewType) {
       cls: "cc-toggle-btn",
       attr: { title: spec.tooltip }
     });
-    applyToggleButtonState(btn, plugin, spec.isEnabled(plugin));
+    applyToggleButtonState(btn, plugin, isEmpty ? false : spec.isEnabled(plugin));
     btn.addEventListener("click", () => plugin.runCommand(spec.commandId, { silent: true }));
   }
 }
@@ -1399,8 +1400,8 @@ var AnnotationSidebarView = class extends import_obsidian3.ItemView {
   render() {
     var _a;
     const root = this.containerEl.children[1];
-    const file = this.app.workspace.getActiveFile();
-    const filePath = file && file.extension === "md" ? file.path : null;
+    const file = this.plugin.getActiveMarkdownFile();
+    const filePath = file ? file.path : null;
     const annotations = filePath ? (_a = this.plugin.getAllAnnotations().get(filePath)) != null ? _a : [] : [];
     const byId = /* @__PURE__ */ new Map();
     for (const ann of annotations) {
@@ -1418,7 +1419,7 @@ var AnnotationSidebarView = class extends import_obsidian3.ItemView {
       this.expandedSections,
       filePath ? "No annotations found in this note." : "Open a note to see its annotations."
     );
-    renderSidebarToggleRows(root, this.plugin, SIDEBAR_VIEW_TYPE);
+    renderSidebarToggleRows(root, this.plugin, SIDEBAR_VIEW_TYPE, !this.plugin.hasAnyEntries(filePath));
   }
 };
 
@@ -1449,8 +1450,8 @@ var CommentSidebarView = class extends import_obsidian4.ItemView {
   render() {
     var _a;
     const root = this.containerEl.children[1];
-    const file = this.app.workspace.getActiveFile();
-    const filePath = file && file.extension === "md" ? file.path : null;
+    const file = this.plugin.getActiveMarkdownFile();
+    const filePath = file ? file.path : null;
     const allComments = filePath ? (_a = this.plugin.getAllComments().get(filePath)) != null ? _a : [] : [];
     const query = this.searchQuery.trim().toLowerCase();
     const comments = query ? allComments.filter((c) => c.text.toLowerCase().includes(query)) : allComments;
@@ -1483,7 +1484,12 @@ var CommentSidebarView = class extends import_obsidian4.ItemView {
         }
       } : void 0
     );
-    renderSidebarToggleRows(root, this.plugin, COMMENT_SIDEBAR_VIEW_TYPE);
+    renderSidebarToggleRows(
+      root,
+      this.plugin,
+      COMMENT_SIDEBAR_VIEW_TYPE,
+      !this.plugin.hasAnyEntries(filePath)
+    );
   }
 };
 
@@ -1515,6 +1521,10 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     this.editorViews = /* @__PURE__ */ new Set();
     this.fileAnnotations = /* @__PURE__ */ new Map();
     this.fileComments = /* @__PURE__ */ new Map();
+    // workspace.getActiveFile() can transiently return null when focus moves
+    // to a sidebar leaf (e.g. clicking the SB switch button) — sidebars fall
+    // back to this so their content doesn't blank out mid-switch.
+    this.lastActiveMarkdownFile = null;
     this.debouncedRefresh = (0, import_obsidian5.debounce)(() => this._refreshSidebar(), 150, true);
     this.debouncedReloadConfig = (0, import_obsidian5.debounce)(() => {
       void this.reloadConfigFile();
@@ -1764,6 +1774,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       })
     );
     this.app.workspace.onLayoutReady(async () => {
+      this.updateLastActiveMarkdownFile(this.app.workspace.getActiveFile());
       await this.indexAllFiles();
       if (this.settings.configSource === "file") {
         await this.reloadConfigFile();
@@ -1809,10 +1820,14 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       })
     );
     this.registerEvent(
-      this.app.workspace.on("file-open", () => {
+      this.app.workspace.on("file-open", (file) => {
+        this.updateLastActiveMarkdownFile(file);
         this.debouncedRefresh();
       })
     );
+  }
+  updateLastActiveMarkdownFile(file) {
+    if (file && file.extension === "md") this.lastActiveMarkdownFile = file;
   }
   async loadSettings() {
     this.settings = Object.assign(
@@ -1836,6 +1851,17 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
   }
   getAllComments() {
     return this.fileComments;
+  }
+  // Prefer the true active file, but fall back to the last known one when
+  // focus is on a sidebar leaf (see lastActiveMarkdownFile).
+  getActiveMarkdownFile() {
+    const active = this.app.workspace.getActiveFile();
+    return active && active.extension === "md" ? active : this.lastActiveMarkdownFile;
+  }
+  hasAnyEntries(filePath) {
+    var _a, _b;
+    if (!filePath) return false;
+    return !!((_a = this.fileAnnotations.get(filePath)) == null ? void 0 : _a.length) || !!((_b = this.fileComments.get(filePath)) == null ? void 0 : _b.length);
   }
   refreshSidebar() {
     this.debouncedRefresh();

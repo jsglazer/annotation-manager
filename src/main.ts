@@ -96,6 +96,10 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 	private fileAnnotations: Map<string, Annotation[]> = new Map();
 	private fileComments: Map<string, ParsedComment[]> = new Map();
+	// workspace.getActiveFile() can transiently return null when focus moves
+	// to a sidebar leaf (e.g. clicking the SB switch button) — sidebars fall
+	// back to this so their content doesn't blank out mid-switch.
+	private lastActiveMarkdownFile: TFile | null = null;
 	private debouncedRefresh = debounce(() => this._refreshSidebar(), 150, true);
 	private debouncedReloadConfig = debounce(() => {
 		void this.reloadConfigFile();
@@ -378,6 +382,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 		);
 
 		this.app.workspace.onLayoutReady(async () => {
+			this.updateLastActiveMarkdownFile(this.app.workspace.getActiveFile());
 			await this.indexAllFiles();
 
 			if (this.settings.configSource === 'file') {
@@ -438,10 +443,15 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 		// Both sidebars are scoped to the active file — refresh when it changes.
 		this.registerEvent(
-			this.app.workspace.on('file-open', () => {
+			this.app.workspace.on('file-open', (file) => {
+				this.updateLastActiveMarkdownFile(file);
 				this.debouncedRefresh();
 			}),
 		);
+	}
+
+	private updateLastActiveMarkdownFile(file: TFile | null): void {
+		if (file && file.extension === 'md') this.lastActiveMarkdownFile = file;
 	}
 
 	async loadSettings() {
@@ -469,6 +479,18 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 	getAllComments(): Map<string, ParsedComment[]> {
 		return this.fileComments;
+	}
+
+	// Prefer the true active file, but fall back to the last known one when
+	// focus is on a sidebar leaf (see lastActiveMarkdownFile).
+	getActiveMarkdownFile(): TFile | null {
+		const active = this.app.workspace.getActiveFile();
+		return active && active.extension === 'md' ? active : this.lastActiveMarkdownFile;
+	}
+
+	hasAnyEntries(filePath: string | null): boolean {
+		if (!filePath) return false;
+		return !!this.fileAnnotations.get(filePath)?.length || !!this.fileComments.get(filePath)?.length;
 	}
 
 	refreshSidebar(): void {
