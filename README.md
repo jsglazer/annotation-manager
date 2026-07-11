@@ -16,8 +16,11 @@ Full documentation is in the [GitHub Wiki](https://github.com/jsglazer/annotatio
 
 - [Home](https://github.com/jsglazer/annotation-manager/wiki) — overview and quick start
 - [Annotations](https://github.com/jsglazer/annotation-manager/wiki/Annotations) — syntax, styling, sidebar, commands
+- [Comments](https://github.com/jsglazer/annotation-manager/wiki/Comments) — syntax, tag inheritance, sidebar, commands
 - [Configuration](https://github.com/jsglazer/annotation-manager/wiki/Configuration) — all settings, config file setup, and reading-mode color pickers
 - [DataviewJS Examples](https://github.com/jsglazer/annotation-manager/wiki/DataviewJS-Examples) — querying annotations
+
+A link to the wiki is also on the plugin's **Settings → Annotation Manager → General** tab.
 
 ---
 
@@ -25,12 +28,12 @@ Full documentation is in the [GitHub Wiki](https://github.com/jsglazer/annotatio
 
 - **Inline annotations** — wrap any text in `{={parent/child}your note=}` to tag it with an identifier
 - **Live Preview rendering** — delimiters and identifier are hidden; only the annotated text is shown, optionally styled
-- **Annotations sidebar** — lists the annotations in the note you currently have open, grouped by identifier, with one-click navigation; switches automatically as you move between notes
+- **Annotations sidebar** — titled "Annotations" at the top; lists the annotations in the note you currently have open, grouped by identifier, with one-click navigation; switches automatically as you move between notes
 - **Comments** — attach freeform notes with `{@your comment@}`, independent of annotations; the **Add comment** command prompts for a tag from the same list as **Apply identifier to selection** (pick "No tag" for an untagged comment), or tag one explicitly by typing `{@{parent/child}your comment@}`. Run it with the cursor immediately after an annotation (no space) and it skips the prompt entirely, inheriting that annotation's tag — toggle this with **Auto-inherit adjacent tag** (on by default) in the Comments settings tab.
-- **Comment & annotate** — a single command that wraps the current selection as an annotation and inserts an empty adjacent comment sharing the same tag, in one step; shows an alert if no text is selected
-- **Comments sidebar** — lists the current note's comments grouped by tag, with an untagged "No Tag" section (expanded by default; other sections start collapsed) and a search box to filter comments by text, plus the same one-click navigation as the Annotations sidebar
+- **Comment & annotate** — a single command that wraps the current selection as an annotation and inserts an empty adjacent comment sharing the same tag, in one step, relying on zero-space tag inheritance rather than repeating the identifier; shows an alert if no text is selected
+- **Comments sidebar** — titled "Comments" at the top; lists the current note's comments grouped by tag, with an untagged "No Tag" section (expanded by default; other sections start collapsed) and a search box to filter comments by text, plus the same one-click navigation as the Annotations sidebar
 - **Sidebar navigation** — clicking an entry in either sidebar selects its full source line and places the cursor at the start of that annotation/comment marker
-- **Sidebar quick-toggle buttons** — an identical two-row button panel at the bottom of both sidebars: `SB` switches between the Annotations and Comments sidebars, and the rest fire the visibility/formatting commands directly (`A-F`/`B-V`/`B-F` for annotations, `C-V`/`C-F`/`B-V`/`B-F` for comments) — hover any button to see the full command name. Each toggle button reflects its current on/off state with configurable enabled/disabled colors (separate for light/dark themes, under the new **Sidebar** settings tab) and no longer pops up a Notice when clicked (Command Palette/hotkey use still shows one).
+- **Sidebar quick-toggle buttons** — an identical two-row button panel at the bottom of both sidebars: `SB` switches between the Annotations and Comments sidebars, and the rest fire the visibility/formatting commands directly (`A-F`/`B-V`/`B-F` for annotations, `C-V`/`C-F`/`B-V`/`B-F` for comments) — hover any button to see the full command name. Each toggle button reflects its current on/off state with configurable enabled/disabled colors (separate for light/dark themes, under the **Sidebar** settings tab) and no longer pops up a Notice when clicked (Command Palette/hotkey use still shows one). Clicking `SB` briefly flashes it with its own configurable color (light/dark) before switching sidebars.
 - **Custom styling** — assign font color, background color, and font size to any identifier or wildcard pattern; comments reuse the same identifier styles when tagged
 - **Annotations & Comments visibility controls** — dedicated Settings tabs (and matching commands) to show/hide annotation and comment brackets, formatting, and — for comments — the entire comment; the Comments tab also lets you set a fixed fore/background color, independent of tag color and separate for light/dark themes, for both the `{@`/`@}` delimiter itself and the comment text content — so formatting toggles have a visible effect even on untagged comments
 - **Dataview integration** — annotations are exposed as a `cc` field on each note's page object
