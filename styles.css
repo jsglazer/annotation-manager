@@ -365,6 +365,15 @@
 	color: var(--text-normal);
 }
 
+/* ── Setting group headings (Obsidian's built-in .setHeading()) ─────────────── */
+/* Scoped to this plugin's own settings tab so other plugins' settings pages
+   are not affected. */
+
+.cc-settings-tab .setting-item-heading .setting-item-name {
+	font-size: 1.15em;
+	font-weight: 700;
+}
+
 .cc-tab-btn-active {
 	color: var(--text-accent);
 	border-bottom-color: var(--interactive-accent);

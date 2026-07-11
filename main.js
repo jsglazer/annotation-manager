@@ -48,7 +48,11 @@ var DEFAULT_SETTINGS = {
     light: { fontColor: "", backgroundColor: "" },
     dark: { fontColor: "", backgroundColor: "" }
   },
-  commentAutoInheritAdjacentTag: false
+  commentContentStyle: {
+    light: { fontColor: "", backgroundColor: "" },
+    dark: { fontColor: "", backgroundColor: "" }
+  },
+  commentAutoInheritAdjacentTag: true
 };
 var EMPTY_STYLE = {
   fontSize: "",
@@ -274,6 +278,7 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
   display() {
     const { containerEl } = this;
     containerEl.empty();
+    containerEl.addClass("cc-settings-tab");
     containerEl.createDiv({
       cls: "cc-settings-version",
       text: `Annotation Manager v${this.plugin.manifest.version}`
@@ -369,7 +374,7 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     );
   }
   renderCommentsTab(containerEl) {
-    new import_obsidian.Setting(containerEl).setName("Comments").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Comment visibility").setHeading();
     this.renderToggle(
       containerEl,
       "Hide brackets",
@@ -412,7 +417,7 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     );
     new import_obsidian.Setting(containerEl).setName("Comment tagging").setHeading();
     new import_obsidian.Setting(containerEl).setName("Auto-inherit adjacent tag").setDesc(
-      'When the "Add comment" command runs immediately after an annotation, inherit its tag (zero-space) instead of defaulting to "No Tag" (one space)'
+      `When the "Add comment" command runs immediately after an annotation, skip the identifier picker and inherit that annotation's tag instead of prompting`
     ).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.commentAutoInheritAdjacentTag).onChange(async (v) => {
         this.plugin.settings.commentAutoInheritAdjacentTag = v;
@@ -424,17 +429,43 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
       text: "Color the {@ and @} delimiter characters shown when brackets are not hidden, independent of tag color.",
       cls: "setting-item-description"
     });
-    this.renderDelimiterThemeSettings(containerEl, "Light theme", "light");
-    this.renderDelimiterThemeSettings(containerEl, "Dark theme", "dark");
+    this.renderThemeColorBlock(
+      containerEl,
+      "Light theme",
+      "delimiter",
+      this.plugin.settings.commentDelimiterStyle.light
+    );
+    this.renderThemeColorBlock(
+      containerEl,
+      "Dark theme",
+      "delimiter",
+      this.plugin.settings.commentDelimiterStyle.dark
+    );
+    new import_obsidian.Setting(containerEl).setName("Comment content").setHeading();
+    containerEl.createEl("p", {
+      text: "Color the comment text itself when no tag color applies (untagged comments, or comments not adjacent to an annotation), independent of tag color.",
+      cls: "setting-item-description"
+    });
+    this.renderThemeColorBlock(
+      containerEl,
+      "Light theme",
+      "content",
+      this.plugin.settings.commentContentStyle.light
+    );
+    this.renderThemeColorBlock(
+      containerEl,
+      "Dark theme",
+      "content",
+      this.plugin.settings.commentContentStyle.dark
+    );
   }
-  renderDelimiterThemeSettings(containerEl, label, theme) {
+  renderThemeColorBlock(containerEl, label, noun, style) {
     const wrap = containerEl.createDiv("cc-identifier-block");
     new import_obsidian.Setting(wrap).setName(label).setHeading();
-    const style = this.plugin.settings.commentDelimiterStyle[theme];
     this.renderColorSetting(
       wrap,
       "Text color",
-      `Hex color for the delimiter text in ${label.toLowerCase()}`,
+      `Hex color for the ${noun} text in ${label.toLowerCase()}`,
       () => style.fontColor,
       async (v) => {
         style.fontColor = v;
@@ -445,7 +476,7 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     this.renderColorSetting(
       wrap,
       "Background color",
-      `Hex color for the delimiter background in ${label.toLowerCase()}`,
+      `Hex color for the ${noun} background in ${label.toLowerCase()}`,
       () => style.backgroundColor,
       async (v) => {
         style.backgroundColor = v;
@@ -765,6 +796,20 @@ function delimiterStyleMark(plugin) {
   if (s.backgroundColor) parts.push(`background-color: ${s.backgroundColor}`);
   return import_view.Decoration.mark({ class: classes.join(" "), attributes: { style: parts.join("; ") } });
 }
+function contentStyleMark(plugin) {
+  const theme = isDarkTheme() ? "dark" : "light";
+  const s = plugin.settings.commentContentStyle[theme];
+  if (!s.fontColor && !s.backgroundColor) return null;
+  const parts = [];
+  const classes = ["cc-annotation-editor"];
+  if (s.fontColor) {
+    parts.push(`color: ${s.fontColor}`);
+    parts.push(`--cc-fg: ${s.fontColor}`);
+    classes.push("cc-fg");
+  }
+  if (s.backgroundColor) parts.push(`background-color: ${s.backgroundColor}`);
+  return import_view.Decoration.mark({ class: classes.join(" "), attributes: { style: parts.join("; ") } });
+}
 function getCodeRanges2(text) {
   const ranges = [];
   let m;
@@ -896,7 +941,7 @@ function createAnnotationViewPlugin(plugin) {
   );
 }
 function buildCommentDecorations(view, plugin) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
   const builder = new import_state.RangeSetBuilder();
   const commentRanges = [];
   const { selection } = view.state;
@@ -935,6 +980,7 @@ function buildCommentDecorations(view, plugin) {
       }
       const cls = resolvedClass(parent, child, plugin.settings.identifierStyles);
       const style = resolvedStyle(parent, child, plugin.settings.identifierStyles);
+      const textMark = plugin.commentsFormattingEnabled && cls ? makeColorMark(cls, style) : (_j = contentStyleMark(plugin)) != null ? _j : NEUTRAL_MARK;
       const prefixLen = fullLen - content.length - 2;
       const contentStart = start + prefixLen;
       const suffixStart = end - 2;
@@ -945,13 +991,11 @@ function buildCommentDecorations(view, plugin) {
       } else if (hideGate && plugin.commentBracketsHiddenEnabled) {
         builder.add(start, contentStart, HIDE);
         if (contentStart < suffixStart) {
-          const textMark = plugin.commentsFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
           addContentMarks(builder, contentStart, suffixStart, content, textMark);
         }
         builder.add(suffixStart, end, HIDE);
       } else {
-        const idMark = plugin.commentBracketFormattingEnabled && cls ? makeColorMark(cls, style) : (_j = delimiterStyleMark(plugin)) != null ? _j : NEUTRAL_MARK;
-        const textMark = plugin.commentsFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
+        const idMark = plugin.commentBracketFormattingEnabled && cls ? makeColorMark(cls, style) : (_k = delimiterStyleMark(plugin)) != null ? _k : NEUTRAL_MARK;
         if (contentStart > start) builder.add(start, contentStart, idMark);
         if (suffixStart > contentStart) {
           if (inLP && cursorInside) {
@@ -1287,6 +1331,15 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
           this.settings.commentsHiddenEnabled = false;
           void this.saveSettings();
           this.bumpStyleVersion();
+        }
+        if (this.settings.commentAutoInheritAdjacentTag) {
+          const fromOffset = editor.posToOffset(editor.getCursor("from"));
+          const source = parseAnnotations(editor.getValue()).find((a) => a.to === fromOffset);
+          if (source) {
+            const id = source.child ? `${source.parent}/${source.child}` : source.parent;
+            this.insertComment(editor, id);
+            return;
+          }
         }
         new IdentifierSuggestModal(
           this.app,

@@ -147,6 +147,16 @@ export default class AnnotationManagerPlugin extends Plugin {
 					this.bumpStyleVersion();
 				}
 
+				if (this.settings.commentAutoInheritAdjacentTag) {
+					const fromOffset = editor.posToOffset(editor.getCursor('from'));
+					const source = parseAnnotations(editor.getValue()).find((a) => a.to === fromOffset);
+					if (source) {
+						const id = source.child ? `${source.parent}/${source.child}` : source.parent;
+						this.insertComment(editor, id);
+						return;
+					}
+				}
+
 				new IdentifierSuggestModal(
 					this.app,
 					this,

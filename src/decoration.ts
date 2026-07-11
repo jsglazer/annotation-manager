@@ -47,6 +47,28 @@ function delimiterStyleMark(plugin: AnnotationManagerPlugin): Decoration | null 
 	return Decoration.mark({ class: classes.join(' '), attributes: { style: parts.join('; ') } });
 }
 
+// Fixed fore/background color for comment text, independent of tag color.
+// This is what makes "Comments formatting" visibly do something for comments
+// with no resolved tag (untagged, not adjacent to an annotation) — without it
+// there is no tag color to toggle and the setting has no visible effect.
+// Returns null when no color is configured for the active theme.
+function contentStyleMark(plugin: AnnotationManagerPlugin): Decoration | null {
+	const theme = isDarkTheme() ? 'dark' : 'light';
+	const s = plugin.settings.commentContentStyle[theme];
+	if (!s.fontColor && !s.backgroundColor) return null;
+
+	const parts: string[] = [];
+	const classes = ['cc-annotation-editor'];
+	if (s.fontColor) {
+		parts.push(`color: ${s.fontColor}`);
+		parts.push(`--cc-fg: ${s.fontColor}`);
+		classes.push('cc-fg');
+	}
+	if (s.backgroundColor) parts.push(`background-color: ${s.backgroundColor}`);
+
+	return Decoration.mark({ class: classes.join(' '), attributes: { style: parts.join('; ') } });
+}
+
 // Find [from, to) ranges of fenced code blocks and inline code in a text chunk.
 // Used to skip annotation matches that fall inside code regions.
 function getCodeRanges(text: string): Array<[number, number]> {
@@ -302,6 +324,13 @@ function buildCommentDecorations(
 
 			const cls = resolvedClass(parent, child, plugin.settings.identifierStyles);
 			const style = resolvedStyle(parent, child, plugin.settings.identifierStyles);
+			// Tag color wins when formatting is on and a tag resolved; otherwise fall
+			// back to the fixed Comment Content color so untagged/non-adjacent
+			// comments still respond to the "Comments formatting" toggle.
+			const textMark =
+				plugin.commentsFormattingEnabled && cls
+					? makeColorMark(cls, style)
+					: (contentStyleMark(plugin) ?? NEUTRAL_MARK);
 
 			// prefixLen = length of the opening delimiter ({@ or {@{parent/child})
 			const prefixLen = fullLen - content.length - 2; // 2 = length of @}
@@ -317,8 +346,6 @@ function buildCommentDecorations(
 			} else if (hideGate && plugin.commentBracketsHiddenEnabled) {
 				builder.add(start, contentStart, HIDE);
 				if (contentStart < suffixStart) {
-					const textMark =
-						plugin.commentsFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
 					addContentMarks(builder, contentStart, suffixStart, content, textMark);
 				}
 				builder.add(suffixStart, end, HIDE);
@@ -327,8 +354,6 @@ function buildCommentDecorations(
 					plugin.commentBracketFormattingEnabled && cls
 						? makeColorMark(cls, style)
 						: (delimiterStyleMark(plugin) ?? NEUTRAL_MARK);
-				const textMark =
-					plugin.commentsFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
 
 				if (contentStart > start) builder.add(start, contentStart, idMark);
 

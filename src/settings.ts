@@ -18,6 +18,11 @@ export interface CommentDelimiterStyle {
 	dark: DelimiterColorStyle;
 }
 
+export interface CommentContentStyle {
+	light: DelimiterColorStyle;
+	dark: DelimiterColorStyle;
+}
+
 export interface AnnotationManagerSettings {
 	// Key is "parent/child", "parent/*", or "parent"
 	identifierStyles: Record<string, IdentifierStyle>;
@@ -39,9 +44,14 @@ export interface AnnotationManagerSettings {
 	// (independent of tag color), per light/dark theme.
 	commentDelimiterStyle: CommentDelimiterStyle;
 
+	// Fixed fore/background color for comment text itself (independent of tag
+	// color), per light/dark theme. Used when "Comments formatting" is on but
+	// no tag color resolved (untagged / non-adjacent comments).
+	commentContentStyle: CommentContentStyle;
+
 	// When the "Add comment" command runs immediately after (zero-space) an
-	// annotation, insert a leading space by default so the comment does NOT
-	// inherit that annotation's tag, unless this is enabled.
+	// annotation, skip the identifier picker and inherit that annotation's tag
+	// instead of prompting the user.
 	commentAutoInheritAdjacentTag: boolean;
 }
 
@@ -64,7 +74,12 @@ export const DEFAULT_SETTINGS: AnnotationManagerSettings = {
 		dark: { fontColor: '', backgroundColor: '' },
 	},
 
-	commentAutoInheritAdjacentTag: false,
+	commentContentStyle: {
+		light: { fontColor: '', backgroundColor: '' },
+		dark: { fontColor: '', backgroundColor: '' },
+	},
+
+	commentAutoInheritAdjacentTag: true,
 };
 
 export const EMPTY_STYLE: IdentifierStyle = {
@@ -399,6 +414,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+		containerEl.addClass('cc-settings-tab');
 
 		containerEl.createDiv({
 			cls: 'cc-settings-version',
@@ -512,7 +528,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 	}
 
 	private renderCommentsTab(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName('Comments').setHeading();
+		new Setting(containerEl).setName('Comment visibility').setHeading();
 
 		this.renderToggle(
 			containerEl,
@@ -560,7 +576,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			.setName('Auto-inherit adjacent tag')
 			.setDesc(
 				'When the "Add comment" command runs immediately after an annotation, ' +
-					'inherit its tag (zero-space) instead of defaulting to "No Tag" (one space)',
+					'skip the identifier picker and inherit that annotation\'s tag instead of prompting',
 			)
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.commentAutoInheritAdjacentTag).onChange(async (v) => {
@@ -577,24 +593,54 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			cls: 'setting-item-description',
 		});
 
-		this.renderDelimiterThemeSettings(containerEl, 'Light theme', 'light');
-		this.renderDelimiterThemeSettings(containerEl, 'Dark theme', 'dark');
+		this.renderThemeColorBlock(
+			containerEl,
+			'Light theme',
+			'delimiter',
+			this.plugin.settings.commentDelimiterStyle.light,
+		);
+		this.renderThemeColorBlock(
+			containerEl,
+			'Dark theme',
+			'delimiter',
+			this.plugin.settings.commentDelimiterStyle.dark,
+		);
+
+		new Setting(containerEl).setName('Comment content').setHeading();
+		containerEl.createEl('p', {
+			text:
+				'Color the comment text itself when no tag color applies (untagged comments, or ' +
+				'comments not adjacent to an annotation), independent of tag color.',
+			cls: 'setting-item-description',
+		});
+
+		this.renderThemeColorBlock(
+			containerEl,
+			'Light theme',
+			'content',
+			this.plugin.settings.commentContentStyle.light,
+		);
+		this.renderThemeColorBlock(
+			containerEl,
+			'Dark theme',
+			'content',
+			this.plugin.settings.commentContentStyle.dark,
+		);
 	}
 
-	private renderDelimiterThemeSettings(
+	private renderThemeColorBlock(
 		containerEl: HTMLElement,
 		label: string,
-		theme: 'light' | 'dark',
+		noun: string,
+		style: DelimiterColorStyle,
 	): void {
 		const wrap = containerEl.createDiv('cc-identifier-block');
 		new Setting(wrap).setName(label).setHeading();
 
-		const style = this.plugin.settings.commentDelimiterStyle[theme];
-
 		this.renderColorSetting(
 			wrap,
 			'Text color',
-			`Hex color for the delimiter text in ${label.toLowerCase()}`,
+			`Hex color for the ${noun} text in ${label.toLowerCase()}`,
 			() => style.fontColor,
 			async (v) => {
 				style.fontColor = v;
@@ -606,7 +652,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		this.renderColorSetting(
 			wrap,
 			'Background color',
-			`Hex color for the delimiter background in ${label.toLowerCase()}`,
+			`Hex color for the ${noun} background in ${label.toLowerCase()}`,
 			() => style.backgroundColor,
 			async (v) => {
 				style.backgroundColor = v;
