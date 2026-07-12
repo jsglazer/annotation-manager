@@ -484,8 +484,10 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     const delTd = tr.createEl("td");
     const delBtn = delTd.createEl("button", { text: "Del", cls: "cc-grid-del" });
     delBtn.addEventListener("click", () => {
-      delete this.plugin.settings.identifierStyles[id];
-      void this.saveAndRefresh().then(() => this.display());
+      new ConfirmModal(this.app, `Delete the identifier "${id}"? This cannot be undone.`, () => {
+        delete this.plugin.settings.identifierStyles[id];
+        void this.saveAndRefresh().then(() => this.display());
+      }).open();
     });
   }
   renderIdentifierExample(td, id) {
@@ -773,6 +775,27 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
         void onChange("");
       }
     });
+  }
+};
+var ConfirmModal = class extends import_obsidian.Modal {
+  constructor(app, message, onConfirm) {
+    super(app);
+    this.message = message;
+    this.onConfirm = onConfirm;
+  }
+  onOpen() {
+    this.contentEl.createEl("p", { text: this.message });
+    const buttonRow = this.contentEl.createDiv("cc-confirm-buttons");
+    const cancelBtn = buttonRow.createEl("button", { text: "Cancel" });
+    cancelBtn.addEventListener("click", () => this.close());
+    const confirmBtn = buttonRow.createEl("button", { text: "Delete", cls: "mod-warning" });
+    confirmBtn.addEventListener("click", () => {
+      this.onConfirm();
+      this.close();
+    });
+  }
+  onClose() {
+    this.contentEl.empty();
   }
 };
 

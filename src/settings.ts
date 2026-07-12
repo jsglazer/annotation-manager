@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import { App, Modal, PluginSettingTab, Setting } from 'obsidian';
 import AnnotationManagerPlugin from './main';
 import { isDarkTheme, isUnsafeKey } from './util';
 
@@ -694,8 +694,10 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		const delTd = tr.createEl('td');
 		const delBtn = delTd.createEl('button', { text: 'Del', cls: 'cc-grid-del' });
 		delBtn.addEventListener('click', () => {
-			delete this.plugin.settings.identifierStyles[id];
-			void this.saveAndRefresh().then(() => this.display());
+			new ConfirmModal(this.app, `Delete the identifier "${id}"? This cannot be undone.`, () => {
+				delete this.plugin.settings.identifierStyles[id];
+				void this.saveAndRefresh().then(() => this.display());
+			}).open();
 		});
 	}
 
@@ -1063,5 +1065,35 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 				void onChange('');
 			}
 		});
+	}
+}
+
+// Simple Yes/No confirmation modal, used before destructive actions like
+// deleting an identifier's configured style.
+class ConfirmModal extends Modal {
+	constructor(
+		app: App,
+		private message: string,
+		private onConfirm: () => void,
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		this.contentEl.createEl('p', { text: this.message });
+
+		const buttonRow = this.contentEl.createDiv('cc-confirm-buttons');
+		const cancelBtn = buttonRow.createEl('button', { text: 'Cancel' });
+		cancelBtn.addEventListener('click', () => this.close());
+
+		const confirmBtn = buttonRow.createEl('button', { text: 'Delete', cls: 'mod-warning' });
+		confirmBtn.addEventListener('click', () => {
+			this.onConfirm();
+			this.close();
+		});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
 	}
 }
