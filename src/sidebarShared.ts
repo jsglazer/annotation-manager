@@ -1,5 +1,7 @@
 import { App, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian';
 import type AnnotationManagerPlugin from './main';
+import { partColors } from './settings';
+import { isDarkTheme } from './util';
 
 export interface GroupedEntry {
 	text: string;
@@ -113,7 +115,7 @@ export function renderGroupedSidebar(
 			const excerpt =
 				words.length === 0
 					? '(empty)'
-					: words.slice(0, 3).join(' ') + (words.length > 3 ? '...' : '');
+					: words.slice(0, 5).join(' ') + (words.length > 5 ? '...' : '');
 			item.createEl('span', {
 				text: `${excerpt} (${entry.line})`,
 				cls: 'cc-sidebar-text',
@@ -208,20 +210,19 @@ const COMMENT_ROW: ToggleButtonSpec[] = [
 	},
 ];
 
-// Applies the settings-configured enabled/disabled color for the current
-// Obsidian theme directly to the button (same inline-style idiom the plugin
-// uses elsewhere for theme-dependent colors — see decoration.ts's isDarkTheme).
+// Applies the settings-configured on/off color for the current Obsidian theme
+// directly to the button (same inline-style idiom the plugin uses elsewhere
+// for theme-dependent colors).
 function applyToggleButtonState(
 	btn: HTMLElement,
 	plugin: AnnotationManagerPlugin,
 	enabled: boolean,
 ): void {
-	const theme = activeDocument.body.classList.contains('theme-dark') ? 'dark' : 'light';
-	const state = enabled ? 'enabled' : 'disabled';
-	const style = plugin.settings.sidebarButtonStyle[theme][state];
+	const theme = isDarkTheme() ? 'dark' : 'light';
+	const colors = partColors(plugin.settings.sidebarButtonStyle[theme][enabled ? 'on' : 'off']);
 	btn.setCssStyles({
-		color: style.fontColor || '',
-		backgroundColor: style.backgroundColor || '',
+		color: colors.fontColor,
+		backgroundColor: colors.backgroundColor,
 	});
 }
 
@@ -232,7 +233,7 @@ const SB_FLASH_DELAY_MS = 180;
 // Briefly applies the settings-configured flash color to the SB button on
 // click, as immediate visual feedback before the sidebar switch tears it down.
 function flashSidebarButton(btn: HTMLElement, plugin: AnnotationManagerPlugin): void {
-	const theme = activeDocument.body.classList.contains('theme-dark') ? 'dark' : 'light';
+	const theme = isDarkTheme() ? 'dark' : 'light';
 	const style = plugin.settings.sbFlashStyle[theme];
 	btn.setCssStyles({
 		color: style.fontColor || '',
@@ -251,13 +252,17 @@ export function renderSidebarToggleRows(
 ): void {
 	const panel = root.createDiv('cc-sidebar-toggle-panel');
 
+	// Empty note: every button gets the fixed grey empty-state look (a CSS
+	// class, deliberately not the configurable on/off colors) instead of its
+	// state color.
+	const emptyCls = isEmpty ? ' cc-toggle-btn-empty' : '';
+
 	const topRow = panel.createDiv('cc-sidebar-toggle-row');
 	const sbBtn = topRow.createEl('button', {
 		text: 'SB',
-		cls: 'cc-toggle-btn',
+		cls: 'cc-toggle-btn' + emptyCls,
 		attr: { title: 'Switch annotations/comments sidebar' },
 	});
-	if (isEmpty) applyToggleButtonState(sbBtn, plugin, false);
 	sbBtn.addEventListener('click', () => {
 		flashSidebarButton(sbBtn, plugin);
 		window.setTimeout(() => {
@@ -267,10 +272,10 @@ export function renderSidebarToggleRows(
 	for (const spec of ANNOTATION_ROW) {
 		const btn = topRow.createEl('button', {
 			text: spec.label,
-			cls: 'cc-toggle-btn',
+			cls: 'cc-toggle-btn' + emptyCls,
 			attr: { title: spec.tooltip },
 		});
-		applyToggleButtonState(btn, plugin, isEmpty ? false : spec.isEnabled(plugin));
+		if (!isEmpty) applyToggleButtonState(btn, plugin, spec.isEnabled(plugin));
 		btn.addEventListener('click', () => plugin.runCommand(spec.commandId, { silent: true }));
 	}
 
@@ -278,17 +283,17 @@ export function renderSidebarToggleRows(
 	for (const spec of COMMENT_ROW) {
 		const btn = bottomRow.createEl('button', {
 			text: spec.label,
-			cls: 'cc-toggle-btn',
+			cls: 'cc-toggle-btn' + emptyCls,
 			attr: { title: spec.tooltip },
 		});
-		applyToggleButtonState(btn, plugin, isEmpty ? false : spec.isEnabled(plugin));
+		if (!isEmpty) applyToggleButtonState(btn, plugin, spec.isEnabled(plugin));
 		btn.addEventListener('click', () => plugin.runCommand(spec.commandId, { silent: true }));
 	}
 }
 
 // `from` is the entry's absolute character offset in the document (as produced
-// by the parser), used to select the whole line while placing the cursor
-// precisely at the start of the annotation/comment marker rather than ch 0.
+// by the parser), used to place the cursor precisely at the start of the
+// annotation/comment marker rather than ch 0.
 async function jumpToLine(app: App, filePath: string, from: number): Promise<void> {
 	const file = app.vault.getAbstractFileByPath(filePath);
 	if (!(file instanceof TFile)) return;
@@ -314,11 +319,10 @@ async function jumpToLine(app: App, filePath: string, from: number): Promise<voi
 	if (view instanceof MarkdownView) {
 		const editor = view.editor;
 		const headPos = editor.offsetToPos(from);
-		const anchorPos = { line: headPos.line, ch: editor.getLine(headPos.line).length };
-		// Anchor at line end, head (blinking cursor) at the entry's start — selects
-		// the rest of the line while keeping the cursor at the marker's beginning.
-		editor.setSelection(anchorPos, headPos);
-		editor.scrollIntoView({ from: headPos, to: anchorPos }, true);
+		// Cursor at the start of the annotation/comment marker — no selection.
+		editor.setCursor(headPos);
+		editor.scrollIntoView({ from: headPos, to: headPos }, true);
+		editor.focus();
 		// Also covers reading/preview mode
 		view.setEphemeralState({ line: headPos.line });
 	}

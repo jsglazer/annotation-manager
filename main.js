@@ -31,165 +31,210 @@ var import_obsidian = require("obsidian");
 function isUnsafeKey(key) {
   return key === "__proto__" || key === "constructor" || key === "prototype";
 }
+function isDarkTheme() {
+  return activeDocument.body.classList.contains("theme-dark");
+}
 
 // src/settings.ts
-var DEFAULT_SETTINGS = {
-  identifierStyles: {},
-  configSource: "settings",
-  configFilePath: "OccConfig.md",
-  syntaxHidingEnabled: true,
-  identifierFormattingEnabled: true,
-  textFormattingEnabled: true,
-  commentBracketsHiddenEnabled: true,
-  commentBracketFormattingEnabled: true,
-  commentsHiddenEnabled: false,
-  commentsFormattingEnabled: true,
-  commentDelimiterStyle: {
-    light: { fontColor: "", backgroundColor: "" },
-    dark: { fontColor: "", backgroundColor: "" }
-  },
-  commentContentStyle: {
-    light: { fontColor: "", backgroundColor: "" },
-    dark: { fontColor: "", backgroundColor: "" }
-  },
-  commentAutoInheritAdjacentTag: true,
-  sidebarButtonStyle: {
-    light: {
-      enabled: { fontColor: "#ffffff", backgroundColor: "#4a90e2" },
-      disabled: { fontColor: "#8a8a8a", backgroundColor: "#e8e8e8" }
+function colorOption(color = "") {
+  return { enabled: color !== "", color };
+}
+function partStyle(fr = "", bg = "") {
+  return { fr: colorOption(fr), bg: colorOption(bg) };
+}
+function emptyThemePartStyle() {
+  return { bracket: partStyle(), text: partStyle() };
+}
+function makeIdentifierStyle() {
+  return {
+    use: true,
+    fontSize: "",
+    light: emptyThemePartStyle(),
+    dark: emptyThemePartStyle()
+  };
+}
+function defaultSettings() {
+  return {
+    identifierStyles: {},
+    syntaxHidingEnabled: true,
+    identifierFormattingEnabled: true,
+    textFormattingEnabled: true,
+    commentBracketsHiddenEnabled: true,
+    commentBracketFormattingEnabled: true,
+    commentsHiddenEnabled: false,
+    commentsFormattingEnabled: true,
+    unassociatedCommentStyle: {
+      light: emptyThemePartStyle(),
+      dark: emptyThemePartStyle()
     },
-    dark: {
-      enabled: { fontColor: "#ffffff", backgroundColor: "#4a90e2" },
-      disabled: { fontColor: "#a0a0a0", backgroundColor: "#3a3a3a" }
+    commentAutoInheritAdjacentTag: true,
+    sidebarButtonStyle: {
+      light: {
+        on: partStyle("#ffffff", "#4a90e2"),
+        off: partStyle("#8a8a8a", "#e8e8e8")
+      },
+      dark: {
+        on: partStyle("#ffffff", "#4a90e2"),
+        off: partStyle("#a0a0a0", "#3a3a3a")
+      }
+    },
+    sbFlashStyle: {
+      light: { fontColor: "#ffffff", backgroundColor: "#e2984a" },
+      dark: { fontColor: "#ffffff", backgroundColor: "#e2984a" }
     }
-  },
-  sbFlashStyle: {
-    light: { fontColor: "#ffffff", backgroundColor: "#e2984a" },
-    dark: { fontColor: "#ffffff", backgroundColor: "#e2984a" }
+  };
+}
+function asRecord(v) {
+  return v !== null && typeof v === "object" && !Array.isArray(v) ? v : null;
+}
+function readString(v) {
+  return typeof v === "string" ? v : "";
+}
+function readColorOption(v) {
+  const r = asRecord(v);
+  if (!r) return colorOption();
+  return {
+    enabled: r.enabled === true,
+    color: readString(r.color)
+  };
+}
+function readPartStyle(v) {
+  const r = asRecord(v);
+  if (!r) return partStyle();
+  return { fr: readColorOption(r.fr), bg: readColorOption(r.bg) };
+}
+function readThemePartStyle(v) {
+  const r = asRecord(v);
+  if (!r) return emptyThemePartStyle();
+  return { bracket: readPartStyle(r.bracket), text: readPartStyle(r.text) };
+}
+function legacyPartStyle(v) {
+  const r = asRecord(v);
+  if (!r) return partStyle();
+  return partStyle(readString(r.fontColor), readString(r.backgroundColor));
+}
+function migrateIdentifierStyle(v) {
+  if ("light" in v || "dark" in v) {
+    return {
+      use: v.use !== false,
+      fontSize: readString(v.fontSize),
+      light: readThemePartStyle(v.light),
+      dark: readThemePartStyle(v.dark)
+    };
   }
-};
-var EMPTY_STYLE = {
-  fontSize: "",
-  fontColor: "",
-  backgroundColor: ""
-};
+  const fr = readString(v.fontColor);
+  const bg = readString(v.backgroundColor);
+  return {
+    use: true,
+    fontSize: readString(v.fontSize),
+    light: { bracket: partStyle(fr, bg), text: partStyle(fr, bg) },
+    dark: { bracket: partStyle(fr, bg), text: partStyle(fr, bg) }
+  };
+}
+function migrateSettings(raw) {
+  const s = defaultSettings();
+  const r = asRecord(raw);
+  if (!r) return s;
+  const booleanKeys = [
+    "syntaxHidingEnabled",
+    "identifierFormattingEnabled",
+    "textFormattingEnabled",
+    "commentBracketsHiddenEnabled",
+    "commentBracketFormattingEnabled",
+    "commentsHiddenEnabled",
+    "commentsFormattingEnabled",
+    "commentAutoInheritAdjacentTag"
+  ];
+  for (const key of booleanKeys) {
+    if (typeof r[key] === "boolean") s[key] = r[key];
+  }
+  const styles = asRecord(r.identifierStyles);
+  if (styles) {
+    for (const [key, value] of Object.entries(styles)) {
+      if (isUnsafeKey(key)) continue;
+      const v = asRecord(value);
+      if (!v) continue;
+      s.identifierStyles[key] = migrateIdentifierStyle(v);
+    }
+  }
+  const ua = asRecord(r.unassociatedCommentStyle);
+  if (ua) {
+    s.unassociatedCommentStyle = {
+      light: readThemePartStyle(ua.light),
+      dark: readThemePartStyle(ua.dark)
+    };
+  } else {
+    const delim = asRecord(r.commentDelimiterStyle);
+    const content = asRecord(r.commentContentStyle);
+    for (const theme of ["light", "dark"]) {
+      if (delim == null ? void 0 : delim[theme]) s.unassociatedCommentStyle[theme].bracket = legacyPartStyle(delim[theme]);
+      if (content == null ? void 0 : content[theme]) s.unassociatedCommentStyle[theme].text = legacyPartStyle(content[theme]);
+    }
+  }
+  const sb = asRecord(r.sidebarButtonStyle);
+  if (sb) {
+    for (const theme of ["light", "dark"]) {
+      const t = asRecord(sb[theme]);
+      if (!t) continue;
+      if ("on" in t || "off" in t) {
+        s.sidebarButtonStyle[theme] = {
+          on: readPartStyle(t.on),
+          off: readPartStyle(t.off)
+        };
+      } else if ("enabled" in t || "disabled" in t) {
+        s.sidebarButtonStyle[theme] = {
+          on: legacyPartStyle(t.enabled),
+          off: legacyPartStyle(t.disabled)
+        };
+      }
+    }
+  }
+  const flash = asRecord(r.sbFlashStyle);
+  if (flash) {
+    for (const theme of ["light", "dark"]) {
+      const t = asRecord(flash[theme]);
+      if (!t) continue;
+      s.sbFlashStyle[theme] = {
+        fontColor: readString(t.fontColor),
+        backgroundColor: readString(t.backgroundColor)
+      };
+    }
+  }
+  return s;
+}
 function identifierKeyToClass(key) {
   return "cc-id-" + key.replace(/\/\*/g, "-wc").replace(/\//g, "-").replace(/[^a-zA-Z0-9-]/g, "-");
 }
-function resolvedClass(parent, child, styles) {
-  if (child) {
-    if (styles[`${parent}/${child}`]) return identifierKeyToClass(`${parent}/${child}`);
-    if (styles[`${parent}/*`]) return identifierKeyToClass(`${parent}/*`);
-  } else {
-    if (styles[parent]) return identifierKeyToClass(parent);
+function enabledColor(opt) {
+  return opt.enabled ? opt.color : "";
+}
+function partColors(p) {
+  return { fontColor: enabledColor(p.fr), backgroundColor: enabledColor(p.bg) };
+}
+function effectivePartColors(style, theme, part) {
+  const p = style[theme][part];
+  return { ...partColors(p), fontSize: style.fontSize };
+}
+function resolveIdentifier(parent, child, styles) {
+  const candidates = child ? [`${parent}/${child}`, `${parent}/*`] : [parent];
+  for (const key of candidates) {
+    const style = styles[key];
+    if (style == null ? void 0 : style.use) return { key, style };
   }
   return null;
+}
+function resolvedClass(parent, child, styles) {
+  const hit = resolveIdentifier(parent, child, styles);
+  return hit ? identifierKeyToClass(hit.key) : null;
 }
 function resolvedStyle(parent, child, styles) {
-  var _a, _b, _c;
-  if (child) {
-    if (styles[`${parent}/${child}`]) return (_a = styles[`${parent}/${child}`]) != null ? _a : null;
-    if (styles[`${parent}/*`]) return (_b = styles[`${parent}/*`]) != null ? _b : null;
-  } else {
-    if (styles[parent]) return (_c = styles[parent]) != null ? _c : null;
-  }
-  return null;
-}
-function normalizeHex(value) {
-  const v = value.trim();
-  if (!v) return "";
-  if (/^#[0-9a-fA-F]{6}$/.test(v)) return v;
-  if (/^[0-9a-fA-F]{6}$/.test(v)) return "#" + v;
-  return "";
-}
-function stripHash(hex) {
-  return hex.startsWith("#") ? hex.slice(1) : hex;
+  var _a, _b;
+  return (_b = (_a = resolveIdentifier(parent, child, styles)) == null ? void 0 : _a.style) != null ? _b : null;
 }
 function isValidFontSize(value) {
   const v = value.trim();
   if (!v) return false;
   return /^\d+(\.\d+)?(px|pt|em|rem|%|vh|vw)$/.test(v) || /^[a-zA-Z-]+$/.test(v);
-}
-function parseConfigTable(content) {
-  const styles = {};
-  const lines = content.split("\n");
-  let headerSeen = false;
-  let separatorSeen = false;
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("|")) continue;
-    if (/^\|[-|:\s]+\|?$/.test(trimmed)) {
-      if (headerSeen) separatorSeen = true;
-      continue;
-    }
-    if (!headerSeen) {
-      headerSeen = true;
-      continue;
-    }
-    if (!separatorSeen) continue;
-    const cols = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
-    const [name = "", fontColor = "", bgColor = "", fontSize = ""] = cols;
-    if (!name || name.startsWith("(") || isUnsafeKey(name)) continue;
-    styles[name] = {
-      fontColor: normalizeHex(fontColor),
-      backgroundColor: normalizeHex(bgColor),
-      fontSize: fontSize.trim()
-    };
-  }
-  return styles;
-}
-function makeExampleCell(style) {
-  const parts = [];
-  if (style.fontColor) parts.push(`color: ${style.fontColor}`);
-  if (style.backgroundColor) parts.push(`background-color: ${style.backgroundColor}`);
-  if (isValidFontSize(style.fontSize)) parts.push(`font-size: ${style.fontSize.trim()}`);
-  if (parts.length === 0) return "";
-  return `<span style="${parts.join("; ")}">Example</span>`;
-}
-function injectExamples(content, styles) {
-  const lines = content.split("\n");
-  let headerSeen = false;
-  let separatorSeen = false;
-  const updated = lines.map((line) => {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("|")) return line;
-    if (/^\|[-|:\s]+\|?$/.test(trimmed)) {
-      if (headerSeen) separatorSeen = true;
-      return line;
-    }
-    if (!headerSeen) {
-      headerSeen = true;
-      return line;
-    }
-    if (!separatorSeen) return line;
-    const cols = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
-    const [name = ""] = cols;
-    if (!name || name.startsWith("(")) return line;
-    const style = styles[name];
-    const example = style ? makeExampleCell(style) : "";
-    const numDataCols = Math.max(4, cols.length - 1);
-    const out = [...cols.slice(0, numDataCols)];
-    while (out.length < numDataCols) out.push("");
-    out.push(example);
-    return "| " + out.join(" | ") + " |";
-  });
-  return updated.join("\n");
-}
-function renderConfigTable(styles) {
-  const header = [
-    "# Annotation Manager Config",
-    "",
-    "Edit this table to define identifier styles. Save the file to apply changes.",
-    "Do not use the `#` prefix for hex colors. Font size accepts any CSS value (e.g. `1.1em`, `14px`).",
-    "",
-    "| Identifier | Font Color | Background Color | Font Size | Example |",
-    "| ---------- | ---------- | ---------------- | --------- | ------- |"
-  ].join("\n");
-  const entries = Object.entries(styles).filter((e) => e[1] !== void 0).sort(([a], [b]) => a.localeCompare(b));
-  const rows = entries.length > 0 ? entries.map(
-    ([id, s]) => `| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} | ${makeExampleCell(s)} |`
-  ).join("\n") : "| (no identifiers configured) | | | | |";
-  return header + "\n" + rows + "\n";
 }
 function isValidHex(s) {
   return /^#[0-9a-fA-F]{6}$/.test(s);
@@ -206,88 +251,12 @@ function applyColorStyle(input, hex) {
 function clearColorStyle(input) {
   input.setCssStyles({ backgroundColor: "", color: "" });
 }
-function vaultMarkdownPaths(app, query) {
-  const q = query.toLowerCase();
-  return app.vault.getMarkdownFiles().map((f) => f.path).filter((p) => p.toLowerCase().includes(q)).sort().slice(0, 12);
-}
-var activeTypeaheadClosers = /* @__PURE__ */ new Set();
-function closeAllTypeaheads() {
-  for (const close of [...activeTypeaheadClosers]) close();
-}
-function attachTypeahead(input, getItems, onSelect) {
-  let dropdown = null;
-  let els = [];
-  let activeIndex = -1;
-  function close() {
-    dropdown == null ? void 0 : dropdown.remove();
-    dropdown = null;
-    els = [];
-    activeIndex = -1;
-    activeTypeaheadClosers.delete(close);
-  }
-  function updateActive() {
-    els.forEach((el, i) => el.toggleClass("cc-typeahead-active", i === activeIndex));
-  }
-  function open(items) {
-    close();
-    if (items.length === 0) return;
-    const rect = input.getBoundingClientRect();
-    dropdown = activeDocument.body.createDiv({ cls: "cc-typeahead-dropdown" });
-    dropdown.setCssStyles({
-      top: rect.bottom + window.scrollY + "px",
-      left: rect.left + window.scrollX + "px",
-      width: rect.width + "px"
-    });
-    activeTypeaheadClosers.add(close);
-    els = items.map((item) => {
-      const el = dropdown.createDiv({ cls: "cc-typeahead-item", text: item });
-      el.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        input.value = item;
-        onSelect(item);
-        close();
-      });
-      return el;
-    });
-  }
-  input.addEventListener("keydown", (e) => {
-    var _a, _b;
-    if (!dropdown) return;
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      activeIndex = Math.min(activeIndex + 1, els.length - 1);
-      updateActive();
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      activeIndex = Math.max(activeIndex - 1, 0);
-      updateActive();
-    } else if (e.key === "Enter" && activeIndex >= 0) {
-      e.preventDefault();
-      const v = (_b = (_a = els[activeIndex]) == null ? void 0 : _a.textContent) != null ? _b : "";
-      input.value = v;
-      onSelect(v);
-      close();
-    } else if (e.key === "Escape") close();
-  });
-  input.addEventListener("input", () => {
-    const q = input.value.trim();
-    if (!q) {
-      close();
-      return;
-    }
-    open(getItems(q));
-  });
-  input.addEventListener("blur", () => window.setTimeout(close, 160));
-}
 var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.pendingIdentifier = "";
     this.activeTab = "general";
     this.plugin = plugin;
-  }
-  hide() {
-    closeAllTypeaheads();
   }
   display() {
     const { containerEl } = this;
@@ -301,8 +270,7 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     const tabs = [
       { id: "general", label: "General" },
       { id: "annotations", label: "Annotations" },
-      { id: "comments", label: "Comments" },
-      { id: "sidebar", label: "Sidebar" }
+      { id: "comments", label: "Comments" }
     ];
     for (const tab of tabs) {
       const btn = tabBar.createEl("button", {
@@ -322,10 +290,14 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
       this.renderCommentsTab(containerEl);
       return;
     }
-    if (this.activeTab === "sidebar") {
-      this.renderSidebarTab(containerEl);
-      return;
-    }
+    this.renderGeneralTab(containerEl);
+  }
+  async saveAndRefresh() {
+    await this.plugin.saveSettings();
+    this.plugin.bumpStyleVersion();
+  }
+  // ── General tab ──────────────────────────────────────────────────────────
+  renderGeneralTab(containerEl) {
     const infoPanel = containerEl.createDiv({ cls: "cc-info-panel" });
     const p0 = infoPanel.createEl("p");
     p0.appendText("Full documentation, syntax reference, and settings walkthroughs are in the ");
@@ -353,22 +325,33 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
       attr: { target: "_blank", rel: "noopener" }
     });
     p2.appendText(" in the repository.");
-    new import_obsidian.Setting(containerEl).setName("Config source").setHeading();
-    new import_obsidian.Setting(containerEl).setName("Identifier style source").setDesc("Define styles in this UI, or read them from a Markdown table in your vault").addDropdown(
-      (dd) => dd.addOption("settings", "Settings UI").addOption("file", "Config file").setValue(this.plugin.settings.configSource).onChange(async (v) => {
-        this.plugin.settings.configSource = v;
-        await this.plugin.saveSettings();
-        this.display();
-      })
+    new import_obsidian.Setting(containerEl).setName("Sidebar Format Options").setHeading();
+    containerEl.createEl("p", {
+      text: "Colors applied to the sidebar toggle buttons (A-F, B-V, B-F, C-V, C-F) based on whether that button's function is currently on or off. When the current note has no annotations or comments, all buttons turn grey instead.",
+      cls: "setting-item-description"
+    });
+    this.renderSidebarButtonGrid(containerEl);
+    new import_obsidian.Setting(containerEl).setName("SB flash colors").setHeading();
+    containerEl.createEl("p", {
+      text: "Colors briefly flashed on the SB button when clicked, before it switches between the Annotations and Comments sidebars.",
+      cls: "setting-item-description"
+    });
+    this.renderThemeColorBlock(
+      containerEl,
+      "Light theme",
+      "SB flash",
+      this.plugin.settings.sbFlashStyle.light
     );
-    if (this.plugin.settings.configSource === "file") {
-      this.renderFileSourceUI(containerEl);
-    } else {
-      this.renderSettingsSourceUI(containerEl);
-    }
+    this.renderThemeColorBlock(
+      containerEl,
+      "Dark theme",
+      "SB flash",
+      this.plugin.settings.sbFlashStyle.dark
+    );
   }
+  // ── Annotations tab ──────────────────────────────────────────────────────
   renderAnnotationsTab(containerEl) {
-    new import_obsidian.Setting(containerEl).setName("Annotations").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Annotation Visibility").setHeading();
     this.renderToggle(
       containerEl,
       "Hide brackets",
@@ -399,7 +382,163 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
         this.plugin.settings.textFormattingEnabled = v;
       }
     );
+    new import_obsidian.Setting(containerEl).setName("Annotations & Associated Comments").setHeading();
+    containerEl.createEl("p", {
+      text: "Per-identifier colors for annotations and their associated comments. Brk = brackets/identifier, Text = content; Fr = text color, Bg = background. Each checkbox controls whether that color is applied. Uncheck Use to disable a row without deleting it. Specific identifiers (math/hot) take precedence over wildcards (math/*).",
+      cls: "setting-item-description"
+    });
+    this.renderIdentifierGrid(containerEl);
+    new import_obsidian.Setting(containerEl).setName("Add identifier").setDesc("Format: parent/child  or  parent/* to match all children of a parent").addText(
+      (text) => text.setPlaceholder("math/hot").onChange((v) => {
+        this.pendingIdentifier = v.trim();
+      })
+    ).addButton(
+      (btn) => btn.setButtonText("Add").setCta().onClick(async () => {
+        const id = this.pendingIdentifier;
+        if (!id || isUnsafeKey(id) || this.plugin.settings.identifierStyles[id]) return;
+        this.plugin.settings.identifierStyles[id] = makeIdentifierStyle();
+        await this.saveAndRefresh();
+        this.display();
+      })
+    );
   }
+  renderIdentifierGrid(containerEl) {
+    const ids = Object.keys(this.plugin.settings.identifierStyles).sort();
+    if (ids.length === 0) {
+      containerEl.createEl("p", {
+        text: "No identifiers configured yet \u2014 add one below.",
+        cls: "setting-item-description"
+      });
+      return;
+    }
+    const wrap = containerEl.createDiv("cc-grid-wrap");
+    const table = wrap.createEl("table", { cls: "cc-grid-table" });
+    const thead = table.createEl("thead");
+    const r1 = thead.createEl("tr");
+    r1.createEl("th", { text: "Use", attr: { rowspan: "3" } });
+    r1.createEl("th", { text: "ID", attr: { rowspan: "3" }, cls: "cc-grid-id-h" });
+    r1.createEl("th", { text: "Light", attr: { colspan: "4" }, cls: "cc-grid-sep" });
+    r1.createEl("th", { text: "Dark", attr: { colspan: "4" }, cls: "cc-grid-sep" });
+    r1.createEl("th", { text: "Size", attr: { rowspan: "3" }, cls: "cc-grid-sep" });
+    r1.createEl("th", { text: "Example", attr: { rowspan: "3" } });
+    r1.createEl("th", { text: "", attr: { rowspan: "3" } });
+    const r2 = thead.createEl("tr");
+    for (let i = 0; i < 4; i++) {
+      r2.createEl("th", {
+        text: i % 2 === 0 ? "Brk" : "Text",
+        attr: { colspan: "2" },
+        cls: i % 2 === 0 ? "cc-grid-sep" : ""
+      });
+    }
+    const r3 = thead.createEl("tr");
+    for (let i = 0; i < 8; i++) {
+      r3.createEl("th", {
+        text: i % 2 === 0 ? "Fr" : "Bg",
+        cls: i % 4 === 0 ? "cc-grid-sep" : ""
+      });
+    }
+    const tbody = table.createEl("tbody");
+    for (const id of ids) this.renderIdentifierRow(tbody, id);
+  }
+  renderIdentifierRow(tbody, id) {
+    const style = this.plugin.settings.identifierStyles[id];
+    if (!style) return;
+    const tr = tbody.createEl("tr");
+    tr.toggleClass("cc-grid-row-unused", !style.use);
+    const useTd = tr.createEl("td");
+    const useCheck = useTd.createEl("input", { attr: { type: "checkbox" }, cls: "cc-grid-check" });
+    useCheck.checked = style.use;
+    useCheck.addEventListener("change", () => {
+      style.use = useCheck.checked;
+      tr.toggleClass("cc-grid-row-unused", !style.use);
+      void this.saveAndRefresh();
+    });
+    tr.createEl("td", { text: id, cls: "cc-grid-id" });
+    let exampleTd = null;
+    const refreshExample = () => {
+      if (exampleTd) this.renderIdentifierExample(exampleTd, id);
+    };
+    for (const theme of ["light", "dark"]) {
+      for (const part of ["bracket", "text"]) {
+        for (const field of ["fr", "bg"]) {
+          const td = tr.createEl("td", {
+            cls: part === "bracket" && field === "fr" ? "cc-grid-sep" : ""
+          });
+          this.renderColorCell(td, style[theme][part][field], refreshExample);
+        }
+      }
+    }
+    const sizeTd = tr.createEl("td", { cls: "cc-grid-sep" });
+    const sizeInput = sizeTd.createEl("input", {
+      cls: "cc-grid-size-input",
+      attr: { type: "text", placeholder: "\u2014" }
+    });
+    sizeInput.value = style.fontSize;
+    sizeInput.addEventListener("change", () => {
+      style.fontSize = sizeInput.value.trim();
+      void this.saveAndRefresh();
+      refreshExample();
+    });
+    exampleTd = tr.createEl("td", { cls: "cc-grid-example" });
+    refreshExample();
+    const delTd = tr.createEl("td");
+    const delBtn = delTd.createEl("button", { text: "Del", cls: "cc-grid-del" });
+    delBtn.addEventListener("click", () => {
+      delete this.plugin.settings.identifierStyles[id];
+      void this.saveAndRefresh().then(() => this.display());
+    });
+  }
+  renderIdentifierExample(td, id) {
+    td.empty();
+    const style = this.plugin.settings.identifierStyles[id];
+    if (!style) return;
+    const theme = isDarkTheme() ? "dark" : "light";
+    const bracket = effectivePartColors(style, theme, "bracket");
+    const text = effectivePartColors(style, theme, "text");
+    this.appendExampleSpan(td, `{={${id}}`, bracket.fontColor, bracket.backgroundColor, "");
+    this.appendExampleSpan(
+      td,
+      "text",
+      text.fontColor,
+      text.backgroundColor,
+      isValidFontSize(style.fontSize) ? style.fontSize.trim() : ""
+    );
+    this.appendExampleSpan(td, "=}", bracket.fontColor, bracket.backgroundColor, "");
+  }
+  appendExampleSpan(td, text, color, backgroundColor, fontSize) {
+    const span = td.createEl("span", { text });
+    span.setCssStyles({ color, backgroundColor, fontSize });
+  }
+  // One checkbox-over-swatch cell bound to a ColorOption. Picking a color
+  // auto-enables the checkbox; the checkbox alone toggles whether the stored
+  // color is applied.
+  renderColorCell(td, opt, onChanged) {
+    const wrap = td.createDiv("cc-grid-cell");
+    const check = wrap.createEl("input", { attr: { type: "checkbox" }, cls: "cc-grid-check" });
+    check.checked = opt.enabled;
+    const picker = wrap.createEl("input", { attr: { type: "color" }, cls: "cc-grid-color" });
+    picker.value = isValidHex(opt.color) ? opt.color : "#888888";
+    check.addEventListener("change", () => {
+      opt.enabled = check.checked;
+      if (opt.enabled && !isValidHex(opt.color)) opt.color = picker.value;
+      void this.saveAndRefresh();
+      onChanged();
+    });
+    picker.addEventListener("input", () => {
+      opt.color = picker.value;
+      if (!opt.enabled) {
+        opt.enabled = true;
+        check.checked = true;
+      }
+      onChanged();
+    });
+    picker.addEventListener("change", () => {
+      opt.color = picker.value;
+      void this.saveAndRefresh();
+      onChanged();
+    });
+  }
+  // ── Comments tab ─────────────────────────────────────────────────────────
   renderCommentsTab(containerEl) {
     new import_obsidian.Setting(containerEl).setName("Comment visibility").setHeading();
     this.renderToggle(
@@ -451,41 +590,120 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Comment delimiter").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Comments (unassociated)").setHeading();
     containerEl.createEl("p", {
-      text: "Color the {@ and @} delimiter characters shown when brackets are not hidden, independent of tag color.",
+      text: "Colors for comments with no associated annotation tag (untagged comments, or comments not adjacent to an annotation). Brk colors the {@ and @} delimiters; Text colors the comment text.",
       cls: "setting-item-description"
     });
-    this.renderThemeColorBlock(
-      containerEl,
-      "Light theme",
-      "delimiter",
-      this.plugin.settings.commentDelimiterStyle.light
-    );
-    this.renderThemeColorBlock(
-      containerEl,
-      "Dark theme",
-      "delimiter",
-      this.plugin.settings.commentDelimiterStyle.dark
-    );
-    new import_obsidian.Setting(containerEl).setName("Comment content").setHeading();
-    containerEl.createEl("p", {
-      text: "Color the comment text itself when no tag color applies (untagged comments, or comments not adjacent to an annotation), independent of tag color.",
-      cls: "setting-item-description"
-    });
-    this.renderThemeColorBlock(
-      containerEl,
-      "Light theme",
-      "content",
-      this.plugin.settings.commentContentStyle.light
-    );
-    this.renderThemeColorBlock(
-      containerEl,
-      "Dark theme",
-      "content",
-      this.plugin.settings.commentContentStyle.dark
-    );
+    this.renderUnassociatedGrid(containerEl);
   }
+  renderUnassociatedGrid(containerEl) {
+    const style = this.plugin.settings.unassociatedCommentStyle;
+    const wrap = containerEl.createDiv("cc-grid-wrap");
+    const table = wrap.createEl("table", { cls: "cc-grid-table" });
+    const thead = table.createEl("thead");
+    const r1 = thead.createEl("tr");
+    r1.createEl("th", { text: "Light", attr: { colspan: "4" } });
+    r1.createEl("th", { text: "Dark", attr: { colspan: "4" }, cls: "cc-grid-sep" });
+    r1.createEl("th", { text: "Example", attr: { rowspan: "3" }, cls: "cc-grid-sep" });
+    const r2 = thead.createEl("tr");
+    for (let i = 0; i < 4; i++) {
+      r2.createEl("th", {
+        text: i % 2 === 0 ? "Brk" : "Text",
+        attr: { colspan: "2" },
+        cls: i % 2 === 0 && i > 0 ? "cc-grid-sep" : ""
+      });
+    }
+    const r3 = thead.createEl("tr");
+    for (let i = 0; i < 8; i++) {
+      r3.createEl("th", {
+        text: i % 2 === 0 ? "Fr" : "Bg",
+        cls: i > 0 && i % 4 === 0 ? "cc-grid-sep" : ""
+      });
+    }
+    const tbody = table.createEl("tbody");
+    const tr = tbody.createEl("tr");
+    let exampleTd = null;
+    const refreshExample = () => {
+      if (!exampleTd) return;
+      exampleTd.empty();
+      const theme = isDarkTheme() ? "dark" : "light";
+      const bracket = partColors(style[theme].bracket);
+      const text = partColors(style[theme].text);
+      this.appendExampleSpan(exampleTd, "{@", bracket.fontColor, bracket.backgroundColor, "");
+      this.appendExampleSpan(exampleTd, "comment", text.fontColor, text.backgroundColor, "");
+      this.appendExampleSpan(exampleTd, "@}", bracket.fontColor, bracket.backgroundColor, "");
+    };
+    for (const theme of ["light", "dark"]) {
+      for (const part of ["bracket", "text"]) {
+        for (const field of ["fr", "bg"]) {
+          const td = tr.createEl("td", {
+            cls: theme === "dark" && part === "bracket" && field === "fr" ? "cc-grid-sep" : ""
+          });
+          this.renderColorCell(td, style[theme][part][field], refreshExample);
+        }
+      }
+    }
+    exampleTd = tr.createEl("td", { cls: "cc-grid-example cc-grid-sep" });
+    refreshExample();
+  }
+  // ── Sidebar Format Options grid (General tab) ────────────────────────────
+  renderSidebarButtonGrid(containerEl) {
+    const style = this.plugin.settings.sidebarButtonStyle;
+    const wrap = containerEl.createDiv("cc-grid-wrap");
+    const table = wrap.createEl("table", { cls: "cc-grid-table" });
+    const thead = table.createEl("thead");
+    const r1 = thead.createEl("tr");
+    r1.createEl("th", { text: "Light", attr: { colspan: "4" } });
+    r1.createEl("th", { text: "Dark", attr: { colspan: "4" }, cls: "cc-grid-sep" });
+    r1.createEl("th", { text: "Example", attr: { rowspan: "3" }, cls: "cc-grid-sep" });
+    const r2 = thead.createEl("tr");
+    for (let i = 0; i < 4; i++) {
+      r2.createEl("th", {
+        text: i % 2 === 0 ? "On" : "Off",
+        attr: { colspan: "2" },
+        cls: i % 2 === 0 && i > 0 ? "cc-grid-sep" : ""
+      });
+    }
+    const r3 = thead.createEl("tr");
+    for (let i = 0; i < 8; i++) {
+      r3.createEl("th", {
+        text: i % 2 === 0 ? "Fr" : "Bg",
+        cls: i > 0 && i % 4 === 0 ? "cc-grid-sep" : ""
+      });
+    }
+    const tbody = table.createEl("tbody");
+    const tr = tbody.createEl("tr");
+    let exampleTd = null;
+    const refreshExample = () => {
+      if (!exampleTd) return;
+      exampleTd.empty();
+      const theme = isDarkTheme() ? "dark" : "light";
+      const on = partColors(style[theme].on);
+      const off = partColors(style[theme].off);
+      const onChip = exampleTd.createEl("span", { text: "On", cls: "cc-grid-example-btn" });
+      onChip.setCssStyles({ color: on.fontColor, backgroundColor: on.backgroundColor });
+      const offChip = exampleTd.createEl("span", { text: "Off", cls: "cc-grid-example-btn" });
+      offChip.setCssStyles({ color: off.fontColor, backgroundColor: off.backgroundColor });
+    };
+    const onChanged = () => {
+      refreshExample();
+      this.plugin.refreshSidebar();
+    };
+    for (const theme of ["light", "dark"]) {
+      for (const state of ["on", "off"]) {
+        for (const field of ["fr", "bg"]) {
+          const td = tr.createEl("td", {
+            cls: theme === "dark" && state === "on" && field === "fr" ? "cc-grid-sep" : ""
+          });
+          this.renderColorCell(td, style[theme][state][field], onChanged);
+        }
+      }
+    }
+    exampleTd = tr.createEl("td", { cls: "cc-grid-example cc-grid-sep" });
+    refreshExample();
+  }
+  // ── Shared small controls ────────────────────────────────────────────────
   renderThemeColorBlock(containerEl, label, noun, style) {
     const wrap = containerEl.createDiv("cc-identifier-block");
     const heading = new import_obsidian.Setting(wrap).setName(label).setHeading();
@@ -513,246 +731,12 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
       }
     );
   }
-  renderSidebarTab(containerEl) {
-    new import_obsidian.Setting(containerEl).setName("Sidebar button colors").setHeading();
-    containerEl.createEl("p", {
-      text: "Colors applied to the sidebar toggle buttons (A-F, B-V, B-F, C-V, C-F) based on whether that button's function is currently on or off. The SB button is unaffected.",
-      cls: "setting-item-description"
-    });
-    this.renderSidebarButtonThemeBlock(
-      containerEl,
-      "Light theme",
-      this.plugin.settings.sidebarButtonStyle.light
-    );
-    this.renderSidebarButtonThemeBlock(
-      containerEl,
-      "Dark theme",
-      this.plugin.settings.sidebarButtonStyle.dark
-    );
-    new import_obsidian.Setting(containerEl).setName("SB flash colors").setHeading();
-    containerEl.createEl("p", {
-      text: "Colors briefly flashed on the SB button when clicked, before it switches between the Annotations and Comments sidebars.",
-      cls: "setting-item-description"
-    });
-    this.renderThemeColorBlock(
-      containerEl,
-      "Light theme",
-      "SB flash",
-      this.plugin.settings.sbFlashStyle.light
-    );
-    this.renderThemeColorBlock(
-      containerEl,
-      "Dark theme",
-      "SB flash",
-      this.plugin.settings.sbFlashStyle.dark
-    );
-  }
-  renderSidebarButtonThemeBlock(containerEl, label, style) {
-    const wrap = containerEl.createDiv("cc-identifier-block");
-    const heading = new import_obsidian.Setting(wrap).setName(label).setHeading();
-    heading.settingEl.addClass("cc-setting-heading-lvl2");
-    const refresh = async () => {
-      await this.plugin.saveSettings();
-      this.plugin.refreshSidebar();
-    };
-    this.renderColorSetting(
-      wrap,
-      "Enabled text color",
-      `Text color for an enabled button in ${label.toLowerCase()}`,
-      () => style.enabled.fontColor,
-      async (v) => {
-        style.enabled.fontColor = v;
-        await refresh();
-      }
-    );
-    this.renderColorSetting(
-      wrap,
-      "Enabled background color",
-      `Background color for an enabled button in ${label.toLowerCase()}`,
-      () => style.enabled.backgroundColor,
-      async (v) => {
-        style.enabled.backgroundColor = v;
-        await refresh();
-      }
-    );
-    this.renderColorSetting(
-      wrap,
-      "Disabled text color",
-      `Text color for a disabled button in ${label.toLowerCase()}`,
-      () => style.disabled.fontColor,
-      async (v) => {
-        style.disabled.fontColor = v;
-        await refresh();
-      }
-    );
-    this.renderColorSetting(
-      wrap,
-      "Disabled background color",
-      `Background color for a disabled button in ${label.toLowerCase()}`,
-      () => style.disabled.backgroundColor,
-      async (v) => {
-        style.disabled.backgroundColor = v;
-        await refresh();
-      }
-    );
-  }
   renderToggle(containerEl, name, desc, getValue, setValue) {
     new import_obsidian.Setting(containerEl).setName(name).setDesc(desc).addToggle(
       (toggle) => toggle.setValue(getValue()).onChange(async (v) => {
         setValue(v);
         await this.plugin.saveSettings();
         this.plugin.bumpStyleVersion();
-      })
-    );
-  }
-  renderFileSourceUI(containerEl) {
-    let configPathInput = null;
-    new import_obsidian.Setting(containerEl).setName("Config file path").setDesc(
-      "Path to a Markdown file in your vault (relative to vault root) containing the style table"
-    ).addText((t) => {
-      configPathInput = t.inputEl;
-      attachTypeahead(
-        t.inputEl,
-        (q) => vaultMarkdownPaths(this.app, q),
-        (v) => {
-          this.plugin.settings.configFilePath = v;
-          void this.plugin.saveSettings();
-          t.setValue(v);
-        }
-      );
-      t.setPlaceholder("OccConfig.md").setValue(this.plugin.settings.configFilePath).onChange(async (v) => {
-        this.plugin.settings.configFilePath = v.trim() || "OccConfig.md";
-        await this.plugin.saveSettings();
-      });
-    }).addButton(
-      (btn) => btn.setButtonText("Browse\u2026").onClick(() => {
-        new VaultFileSuggestModal(this.app, (file) => {
-          this.plugin.settings.configFilePath = file.path;
-          void this.plugin.saveSettings();
-          if (configPathInput) configPathInput.value = file.path;
-        }).open();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Config file actions").addButton(
-      (btn) => btn.setButtonText("Create / update config file").setCta().onClick(async () => {
-        await this.plugin.createConfigFile();
-        this.display();
-      })
-    ).addButton(
-      (btn) => btn.setButtonText("Reload from file").onClick(async () => {
-        await this.plugin.reloadConfigFile();
-        this.display();
-      })
-    );
-    containerEl.createEl("p", {
-      text: "Table columns: Identifier | Font Color | Background Color | Font Size | Example. No # prefix for hex colors. The plugin reloads automatically when the file is saved.",
-      cls: "setting-item-description"
-    });
-    const styles = this.plugin.settings.identifierStyles;
-    const ids = Object.keys(styles).sort();
-    new import_obsidian.Setting(containerEl).setName("Currently loaded identifiers").setHeading();
-    if (ids.length === 0) {
-      containerEl.createEl("p", {
-        text: "None \u2014 create or reload the config file.",
-        cls: "setting-item-description"
-      });
-    } else {
-      const previewList = containerEl.createDiv("cc-file-preview-list");
-      for (const id of ids) {
-        const s = styles[id];
-        if (!s) continue;
-        const row = previewList.createDiv("cc-file-preview-row");
-        row.createEl("span", { text: id, cls: "cc-file-preview-id" });
-        const sample = row.createEl("span", { text: "Example", cls: "cc-file-preview-sample" });
-        sample.setCssStyles({
-          color: s.fontColor || "",
-          backgroundColor: s.backgroundColor || "",
-          fontSize: s.fontSize || ""
-        });
-      }
-    }
-  }
-  renderSettingsSourceUI(containerEl) {
-    new import_obsidian.Setting(containerEl).setName("Identifier styles").setHeading();
-    containerEl.createEl("p", {
-      text: 'Add an identifier (e.g. "math/hot") or a wildcard (e.g. "math/*"). Specific identifiers take precedence over wildcards.'
-    });
-    for (const id of Object.keys(this.plugin.settings.identifierStyles)) {
-      this.renderIdentifierBlock(containerEl, id);
-    }
-    new import_obsidian.Setting(containerEl).setName("Add identifier").setHeading();
-    new import_obsidian.Setting(containerEl).setName("Identifier").setDesc("Format: parent/child  or  parent/* to match all children of a parent").addText(
-      (text) => text.setPlaceholder("math/hot").onChange((v) => {
-        this.pendingIdentifier = v.trim();
-      })
-    ).addButton(
-      (btn) => btn.setButtonText("Add").setCta().onClick(async () => {
-        const id = this.pendingIdentifier;
-        if (!id || this.plugin.settings.identifierStyles[id]) return;
-        this.plugin.settings.identifierStyles[id] = { ...EMPTY_STYLE };
-        await this.plugin.saveSettings();
-        this.display();
-      })
-    );
-  }
-  renderIdentifierBlock(containerEl, id) {
-    const style = this.plugin.settings.identifierStyles[id];
-    if (!style) return;
-    const wrap = containerEl.createDiv("cc-identifier-block");
-    new import_obsidian.Setting(wrap).setName(id).setHeading();
-    const previewWrap = wrap.createEl("div", { cls: "cc-style-preview" });
-    const previewSpan = previewWrap.createEl("span", {
-      text: "Sample annotation text",
-      cls: "cc-style-preview-sample"
-    });
-    const updatePreview = () => {
-      const s = this.plugin.settings.identifierStyles[id];
-      if (!s) return;
-      previewSpan.setCssStyles({
-        color: s.fontColor || "",
-        backgroundColor: s.backgroundColor || "",
-        fontSize: s.fontSize || ""
-      });
-    };
-    updatePreview();
-    new import_obsidian.Setting(wrap).setName("Font size").setDesc("CSS value, e.g. 14px or 1.2em \u2014 leave blank to inherit").addText(
-      (t) => t.setPlaceholder("inherit").setValue(style.fontSize).onChange(async (v) => {
-        style.fontSize = v;
-        await this.plugin.saveSettings();
-        this.plugin.bumpStyleVersion();
-        updatePreview();
-      })
-    );
-    this.renderColorSetting(
-      wrap,
-      "Font color",
-      "Hex color for the annotation text",
-      () => style.fontColor,
-      async (v) => {
-        style.fontColor = v;
-        await this.plugin.saveSettings();
-        this.plugin.bumpStyleVersion();
-        updatePreview();
-      }
-    );
-    this.renderColorSetting(
-      wrap,
-      "Background color",
-      "Hex color for the annotation background",
-      () => style.backgroundColor,
-      async (v) => {
-        style.backgroundColor = v;
-        await this.plugin.saveSettings();
-        this.plugin.bumpStyleVersion();
-        updatePreview();
-      }
-    );
-    new import_obsidian.Setting(wrap).addButton(
-      (btn) => btn.setButtonText("Remove").setWarning().onClick(async () => {
-        delete this.plugin.settings.identifierStyles[id];
-        await this.plugin.saveSettings();
-        this.plugin.bumpStyleVersion();
-        this.display();
       })
     );
   }
@@ -789,22 +773,6 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
         void onChange("");
       }
     });
-  }
-};
-var VaultFileSuggestModal = class extends import_obsidian.FuzzySuggestModal {
-  constructor(app, onChoose) {
-    super(app);
-    this.onChoose = onChoose;
-    this.setPlaceholder("Search for a Markdown file\u2026");
-  }
-  getItems() {
-    return this.app.vault.getMarkdownFiles().sort((a, b) => a.path.localeCompare(b.path));
-  }
-  getItemText(file) {
-    return file.path;
-  }
-  onChooseItem(file) {
-    this.onChoose(file);
   }
 };
 
@@ -890,26 +858,9 @@ var MATH_RE = /\$[^$\n]+\$/g;
 function isLivePreview(view) {
   return view.dom.closest(".is-live-preview") !== null;
 }
-function isDarkTheme() {
-  return activeDocument.body.classList.contains("theme-dark");
-}
-function delimiterStyleMark(plugin) {
+function unassociatedStyleMark(plugin, part) {
   const theme = isDarkTheme() ? "dark" : "light";
-  const s = plugin.settings.commentDelimiterStyle[theme];
-  if (!s.fontColor && !s.backgroundColor) return null;
-  const parts = [];
-  const classes = ["cc-annotation-editor"];
-  if (s.fontColor) {
-    parts.push(`color: ${s.fontColor}`);
-    parts.push(`--cc-fg: ${s.fontColor}`);
-    classes.push("cc-fg");
-  }
-  if (s.backgroundColor) parts.push(`background-color: ${s.backgroundColor}`);
-  return import_view.Decoration.mark({ class: classes.join(" "), attributes: { style: parts.join("; ") } });
-}
-function contentStyleMark(plugin) {
-  const theme = isDarkTheme() ? "dark" : "light";
-  const s = plugin.settings.commentContentStyle[theme];
+  const s = partColors(plugin.settings.unassociatedCommentStyle[theme][part]);
   if (!s.fontColor && !s.backgroundColor) return null;
   const parts = [];
   const classes = ["cc-annotation-editor"];
@@ -971,6 +922,7 @@ function buildDecorations(view, plugin) {
   const annotationRanges = [];
   const { selection } = view.state;
   const inLP = isLivePreview(view);
+  const theme = isDarkTheme() ? "dark" : "light";
   for (const { from, to } of view.visibleRanges) {
     const text = view.state.doc.sliceString(from, to);
     const codeRanges = getCodeRanges2(text);
@@ -989,6 +941,8 @@ function buildDecorations(view, plugin) {
       const content = (_e = match[3]) != null ? _e : "";
       const cls = resolvedClass(parent, child, plugin.settings.identifierStyles);
       const style = resolvedStyle(parent, child, plugin.settings.identifierStyles);
+      const textColors = style ? effectivePartColors(style, theme, "text") : null;
+      const bracketColors = style ? effectivePartColors(style, theme, "bracket") : null;
       const prefixLen = fullLen - content.length - 2;
       const contentStart = start + prefixLen;
       const suffixStart = end - 2;
@@ -996,13 +950,13 @@ function buildDecorations(view, plugin) {
       if (inLP && !cursorInside && plugin.syntaxHidingEnabled) {
         builder.add(start, contentStart, HIDE);
         if (contentStart < suffixStart) {
-          const textMark = plugin.textFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
+          const textMark = plugin.textFormattingEnabled && cls ? makeColorMark(cls, textColors) : NEUTRAL_MARK;
           addContentMarks(builder, contentStart, suffixStart, content, textMark);
         }
         builder.add(suffixStart, end, HIDE);
       } else {
-        const idMark = plugin.identifierFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
-        const textMark = plugin.textFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
+        const idMark = plugin.identifierFormattingEnabled && cls ? makeColorMark(cls, bracketColors) : NEUTRAL_MARK;
+        const textMark = plugin.textFormattingEnabled && cls ? makeColorMark(cls, textColors) : NEUTRAL_MARK;
         if (contentStart > start) builder.add(start, contentStart, idMark);
         if (suffixStart > contentStart) {
           if (inLP && cursorInside) {
@@ -1057,6 +1011,7 @@ function buildCommentDecorations(view, plugin) {
   const commentRanges = [];
   const { selection } = view.state;
   const inLP = isLivePreview(view);
+  const theme = isDarkTheme() ? "dark" : "light";
   for (const { from, to } of view.visibleRanges) {
     const text = view.state.doc.sliceString(from, to);
     const codeRanges = getCodeRanges2(text);
@@ -1091,7 +1046,7 @@ function buildCommentDecorations(view, plugin) {
       }
       const cls = resolvedClass(parent, child, plugin.settings.identifierStyles);
       const style = resolvedStyle(parent, child, plugin.settings.identifierStyles);
-      const textMark = plugin.commentsFormattingEnabled ? cls ? makeColorMark(cls, style) : (_j = contentStyleMark(plugin)) != null ? _j : NEUTRAL_MARK : NEUTRAL_MARK;
+      const textMark = plugin.commentsFormattingEnabled ? cls && style ? makeColorMark(cls, effectivePartColors(style, theme, "text")) : (_j = unassociatedStyleMark(plugin, "text")) != null ? _j : NEUTRAL_MARK : NEUTRAL_MARK;
       const prefixLen = fullLen - content.length - 2;
       const contentStart = start + prefixLen;
       const suffixStart = end - 2;
@@ -1106,7 +1061,7 @@ function buildCommentDecorations(view, plugin) {
         }
         builder.add(suffixStart, end, HIDE);
       } else {
-        const idMark = plugin.commentBracketFormattingEnabled ? cls ? makeColorMark(cls, style) : (_k = delimiterStyleMark(plugin)) != null ? _k : NEUTRAL_MARK : NEUTRAL_MARK;
+        const idMark = plugin.commentBracketFormattingEnabled ? cls && style ? makeColorMark(cls, effectivePartColors(style, theme, "bracket")) : (_k = unassociatedStyleMark(plugin, "bracket")) != null ? _k : NEUTRAL_MARK : NEUTRAL_MARK;
         if (contentStart > start) builder.add(start, contentStart, idMark);
         if (suffixStart > contentStart) {
           if (inLP && cursorInside) {
@@ -1220,7 +1175,7 @@ function renderGroupedSidebar(app, root, title, filePath, sections, expandedSect
     for (const entry of entries) {
       const item = itemsEl.createDiv("cc-sidebar-item");
       const words = entry.text.split(/\s+/).filter(Boolean);
-      const excerpt = words.length === 0 ? "(empty)" : words.slice(0, 3).join(" ") + (words.length > 3 ? "..." : "");
+      const excerpt = words.length === 0 ? "(empty)" : words.slice(0, 5).join(" ") + (words.length > 5 ? "..." : "");
       item.createEl("span", {
         text: `${excerpt} (${entry.line})`,
         cls: "cc-sidebar-text"
@@ -1298,17 +1253,16 @@ var COMMENT_ROW = [
   }
 ];
 function applyToggleButtonState(btn, plugin, enabled) {
-  const theme = activeDocument.body.classList.contains("theme-dark") ? "dark" : "light";
-  const state = enabled ? "enabled" : "disabled";
-  const style = plugin.settings.sidebarButtonStyle[theme][state];
+  const theme = isDarkTheme() ? "dark" : "light";
+  const colors = partColors(plugin.settings.sidebarButtonStyle[theme][enabled ? "on" : "off"]);
   btn.setCssStyles({
-    color: style.fontColor || "",
-    backgroundColor: style.backgroundColor || ""
+    color: colors.fontColor,
+    backgroundColor: colors.backgroundColor
   });
 }
 var SB_FLASH_DELAY_MS = 180;
 function flashSidebarButton(btn, plugin) {
-  const theme = activeDocument.body.classList.contains("theme-dark") ? "dark" : "light";
+  const theme = isDarkTheme() ? "dark" : "light";
   const style = plugin.settings.sbFlashStyle[theme];
   btn.setCssStyles({
     color: style.fontColor || "",
@@ -1317,13 +1271,13 @@ function flashSidebarButton(btn, plugin) {
 }
 function renderSidebarToggleRows(root, plugin, ownViewType, isEmpty) {
   const panel = root.createDiv("cc-sidebar-toggle-panel");
+  const emptyCls = isEmpty ? " cc-toggle-btn-empty" : "";
   const topRow = panel.createDiv("cc-sidebar-toggle-row");
   const sbBtn = topRow.createEl("button", {
     text: "SB",
-    cls: "cc-toggle-btn",
+    cls: "cc-toggle-btn" + emptyCls,
     attr: { title: "Switch annotations/comments sidebar" }
   });
-  if (isEmpty) applyToggleButtonState(sbBtn, plugin, false);
   sbBtn.addEventListener("click", () => {
     flashSidebarButton(sbBtn, plugin);
     window.setTimeout(() => {
@@ -1333,20 +1287,20 @@ function renderSidebarToggleRows(root, plugin, ownViewType, isEmpty) {
   for (const spec of ANNOTATION_ROW) {
     const btn = topRow.createEl("button", {
       text: spec.label,
-      cls: "cc-toggle-btn",
+      cls: "cc-toggle-btn" + emptyCls,
       attr: { title: spec.tooltip }
     });
-    applyToggleButtonState(btn, plugin, isEmpty ? false : spec.isEnabled(plugin));
+    if (!isEmpty) applyToggleButtonState(btn, plugin, spec.isEnabled(plugin));
     btn.addEventListener("click", () => plugin.runCommand(spec.commandId, { silent: true }));
   }
   const bottomRow = panel.createDiv("cc-sidebar-toggle-row");
   for (const spec of COMMENT_ROW) {
     const btn = bottomRow.createEl("button", {
       text: spec.label,
-      cls: "cc-toggle-btn",
+      cls: "cc-toggle-btn" + emptyCls,
       attr: { title: spec.tooltip }
     });
-    applyToggleButtonState(btn, plugin, isEmpty ? false : spec.isEnabled(plugin));
+    if (!isEmpty) applyToggleButtonState(btn, plugin, spec.isEnabled(plugin));
     btn.addEventListener("click", () => plugin.runCommand(spec.commandId, { silent: true }));
   }
 }
@@ -1370,9 +1324,9 @@ async function jumpToLine(app, filePath, from) {
   if (view instanceof import_obsidian2.MarkdownView) {
     const editor = view.editor;
     const headPos = editor.offsetToPos(from);
-    const anchorPos = { line: headPos.line, ch: editor.getLine(headPos.line).length };
-    editor.setSelection(anchorPos, headPos);
-    editor.scrollIntoView({ from: headPos, to: anchorPos }, true);
+    editor.setCursor(headPos);
+    editor.scrollIntoView({ from: headPos, to: headPos }, true);
+    editor.focus();
     view.setEphemeralState({ line: headPos.line });
   }
 }
@@ -1526,21 +1480,14 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     // back to this so their content doesn't blank out mid-switch.
     this.lastActiveMarkdownFile = null;
     this.debouncedRefresh = (0, import_obsidian5.debounce)(() => this._refreshSidebar(), 150, true);
-    this.debouncedReloadConfig = (0, import_obsidian5.debounce)(() => {
-      void this.reloadConfigFile();
-    }, 8e3);
-    this._writingConfigFile = false;
   }
   async onload() {
     await this.loadSettings();
     this.addSettingTab(new AnnotationManagerSettingTab(this.app, this));
     this.registerEditorExtension(createAnnotationViewPlugin(this));
     this.registerEditorExtension(createCommentDecorationViewPlugin(this));
-    this.registerMarkdownPostProcessor((el, ctx) => {
+    this.registerMarkdownPostProcessor((el) => {
       this.processReadingView(el);
-      if (this.settings.configSource === "file" && ctx.sourcePath === (0, import_obsidian5.normalizePath)(this.settings.configFilePath)) {
-        this.processConfigTable(el, ctx.sourcePath);
-      }
     });
     this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new AnnotationSidebarView(leaf, this));
     this.registerView(COMMENT_SIDEBAR_VIEW_TYPE, (leaf) => new CommentSidebarView(leaf, this));
@@ -1776,9 +1723,6 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     this.app.workspace.onLayoutReady(async () => {
       this.updateLastActiveMarkdownFile(this.app.workspace.getActiveFile());
       await this.indexAllFiles();
-      if (this.settings.configSource === "file") {
-        await this.reloadConfigFile();
-      }
       this.setupDataviewIntegration();
       this.addRightSidebarButton();
       const leaves = this.app.workspace.getLeavesOfType(SIDEBAR_VIEW_TYPE);
@@ -1793,9 +1737,6 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
           await this.indexFile(file);
           this.injectDataviewMetadata(file);
           this.debouncedRefresh();
-          if (this.settings.configSource === "file" && file.path === this.settings.configFilePath && !this._writingConfigFile) {
-            this.debouncedReloadConfig();
-          }
         }
       })
     );
@@ -1830,11 +1771,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     if (file && file.extension === "md") this.lastActiveMarkdownFile = file;
   }
   async loadSettings() {
-    this.settings = Object.assign(
-      {},
-      DEFAULT_SETTINGS,
-      await this.loadData()
-    );
+    this.settings = migrateSettings(await this.loadData());
     this.syntaxHidingEnabled = this.settings.syntaxHidingEnabled;
     this.identifierFormattingEnabled = this.settings.identifierFormattingEnabled;
     this.textFormattingEnabled = this.settings.textFormattingEnabled;
@@ -2053,6 +1990,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     let lastIndex = 0;
     let lastAnnotationEnd = -1;
     let lastAnnotationTag = null;
+    const theme = isDarkTheme() ? "dark" : "light";
     const re = new RegExp(_AnnotationManagerPlugin.READING_COMBINED.source, "g");
     let m;
     while ((m = re.exec(value)) !== null) {
@@ -2068,7 +2006,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
           const span = createSpan({ cls: "cc-annotation" });
           if (this.textFormattingEnabled) {
             const style = resolvedStyle(parent, child, this.settings.identifierStyles);
-            if (style) this.applyInlineStyle(span, style);
+            if (style) this.applyInlineStyle(span, effectivePartColors(style, theme, "text"));
           }
           span.appendChild(activeDocument.createTextNode(((_c = m[3]) != null ? _c : "").trim()));
           frag.appendChild(span);
@@ -2092,7 +2030,7 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
             const span = createSpan({ cls: "cc-comment" });
             if (this.commentsFormattingEnabled && parent) {
               const style = resolvedStyle(parent, child, this.settings.identifierStyles);
-              if (style) this.applyInlineStyle(span, style);
+              if (style) this.applyInlineStyle(span, effectivePartColors(style, theme, "text"));
             }
             span.appendChild(activeDocument.createTextNode(((_f = m[6]) != null ? _f : "").trim()));
             frag.appendChild(span);
@@ -2106,101 +2044,6 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
       frag.appendChild(activeDocument.createTextNode(value.slice(lastIndex)));
     }
     return changed ? frag : null;
-  }
-  // ── Config-table color picker (reading view of AMConfig.md) ─────────────
-  processConfigTable(el, sourcePath) {
-    var _a, _b, _c;
-    const tables = el.querySelectorAll("table");
-    for (const table of Array.from(tables)) {
-      const ths = Array.from(table.querySelectorAll("th"));
-      const headers = ths.map((th) => {
-        var _a2, _b2;
-        return (_b2 = (_a2 = th.textContent) == null ? void 0 : _a2.trim()) != null ? _b2 : "";
-      });
-      const fontColorIdx = headers.findIndex((h) => h === "Font Color");
-      const bgColorIdx = headers.findIndex((h) => h === "Background Color");
-      if (fontColorIdx === -1 && bgColorIdx === -1) continue;
-      const rows = Array.from(table.querySelectorAll("tbody tr"));
-      for (const row of rows) {
-        const cells = Array.from(row.querySelectorAll("td"));
-        const identifier = (_c = (_b = (_a = cells[0]) == null ? void 0 : _a.textContent) == null ? void 0 : _b.trim()) != null ? _c : "";
-        if (!identifier || identifier.startsWith("(")) continue;
-        if (fontColorIdx !== -1) {
-          const cell = cells[fontColorIdx];
-          if (cell) this.injectConfigColorPicker(cell, identifier, "fontColor", sourcePath);
-        }
-        if (bgColorIdx !== -1) {
-          const cell = cells[bgColorIdx];
-          if (cell) this.injectConfigColorPicker(cell, identifier, "bgColor", sourcePath);
-        }
-      }
-    }
-  }
-  injectConfigColorPicker(cell, identifier, field, sourcePath) {
-    var _a, _b;
-    const rawHex = (_b = (_a = cell.textContent) == null ? void 0 : _a.trim()) != null ? _b : "";
-    const fullHex = rawHex ? rawHex.startsWith("#") ? rawHex : "#" + rawHex : "#000000";
-    const isValidColorHex = /^#[0-9a-fA-F]{6}$/.test(fullHex);
-    cell.empty();
-    const picker = cell.createEl("input", {
-      cls: "cc-config-color-picker",
-      attr: { type: "color" }
-    });
-    picker.value = isValidColorHex ? fullHex : "#000000";
-    cell.appendText(rawHex);
-    picker.addEventListener("change", () => {
-      void (async () => {
-        const newHex = picker.value;
-        const file = this.app.vault.getAbstractFileByPath(sourcePath);
-        if (!(file instanceof import_obsidian5.TFile)) return;
-        const style = this.settings.identifierStyles[identifier];
-        if (style) {
-          if (field === "fontColor") style.fontColor = newHex;
-          else style.backgroundColor = newHex;
-          await this.saveSettings();
-          this.bumpStyleVersion();
-        }
-        this._writingConfigFile = true;
-        try {
-          await this.app.vault.process(file, (content) => {
-            const withColor = this.updateConfigTableColor(content, identifier, field, newHex);
-            return injectExamples(withColor, this.settings.identifierStyles);
-          });
-        } finally {
-          this._writingConfigFile = false;
-        }
-      })();
-    });
-  }
-  updateConfigTableColor(content, identifier, field, newHex) {
-    const hexWithoutHash = newHex.startsWith("#") ? newHex.slice(1) : newHex;
-    const lines = content.split("\n");
-    let headerSeen = false;
-    let separatorSeen = false;
-    let fontColorColIdx = -1;
-    let bgColorColIdx = -1;
-    return lines.map((line) => {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("|")) return line;
-      if (/^\|[-|:\s]+\|?$/.test(trimmed)) {
-        if (headerSeen) separatorSeen = true;
-        return line;
-      }
-      if (!headerSeen) {
-        headerSeen = true;
-        const cols2 = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
-        fontColorColIdx = cols2.findIndex((c) => c === "Font Color");
-        bgColorColIdx = cols2.findIndex((c) => c === "Background Color");
-        return line;
-      }
-      if (!separatorSeen) return line;
-      const cols = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
-      if (cols[0] !== identifier) return line;
-      const targetIdx = field === "fontColor" ? fontColorColIdx : bgColorColIdx;
-      if (targetIdx === -1 || targetIdx >= cols.length) return line;
-      cols[targetIdx] = hexWithoutHash;
-      return "| " + cols.join(" | ") + " |";
-    }).join("\n");
   }
   applyInlineStyle(el, style) {
     const css = {};
@@ -2223,58 +2066,6 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
     } catch (e) {
       console.warn(`Annotation Manager: failed to index ${file.path}`, e);
     }
-  }
-  // ── Config file integration ──────────────────────────────────────────────
-  async createConfigFile() {
-    const content = renderConfigTable(this.settings.identifierStyles);
-    const path = (0, import_obsidian5.normalizePath)(this.settings.configFilePath || "OccConfig.md");
-    try {
-      const existing = this.app.vault.getAbstractFileByPath(path);
-      if (existing instanceof import_obsidian5.TFile) {
-        await this.app.vault.process(existing, () => content);
-      } else {
-        await this.app.vault.create(path, content);
-      }
-      this.settings.configFilePath = path;
-      await this.saveSettings();
-      new import_obsidian5.Notice(`Config file saved: ${path}`);
-    } catch (e) {
-      new import_obsidian5.Notice(`Failed to write config file: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-  async reloadConfigFile() {
-    const path = (0, import_obsidian5.normalizePath)(this.settings.configFilePath);
-    const file = this.app.vault.getAbstractFileByPath(path);
-    if (!(file instanceof import_obsidian5.TFile)) {
-      new import_obsidian5.Notice(`Config file not found: ${path}`);
-      return;
-    }
-    const content = await this.app.vault.read(file);
-    const parsed = parseConfigTable(content);
-    if (Object.keys(parsed).length === 0 && Object.keys(this.settings.identifierStyles).length > 0) {
-      new import_obsidian5.Notice(
-        `No identifiers found in ${path} \u2014 keeping existing styles. Check the table format.`
-      );
-      return;
-    }
-    this.settings.identifierStyles = parsed;
-    await this.saveSettings();
-    this.bumpStyleVersion();
-    const updated = injectExamples(content, this.settings.identifierStyles);
-    if (updated !== content) {
-      this._writingConfigFile = true;
-      try {
-        await this.app.vault.process(
-          file,
-          (cur) => injectExamples(cur, this.settings.identifierStyles)
-        );
-      } finally {
-        this._writingConfigFile = false;
-      }
-    }
-    new import_obsidian5.Notice(
-      `Loaded ${Object.keys(this.settings.identifierStyles).length} identifiers from ${path}`
-    );
   }
   // ── Dataview integration ─────────────────────────────────────────────────
   setupDataviewIntegration() {

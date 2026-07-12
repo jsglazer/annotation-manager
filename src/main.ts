@@ -6,7 +6,6 @@ import {
 	MarkdownView,
 	Menu,
 	MenuItem,
-	normalizePath,
 	Notice,
 	Plugin,
 	setIcon,
@@ -16,14 +15,13 @@ import {
 import {
 	AnnotationManagerSettings,
 	AnnotationManagerSettingTab,
-	DEFAULT_SETTINGS,
-	IdentifierStyle,
-	injectExamples,
+	EffectiveColors,
+	effectivePartColors,
 	isValidFontSize,
-	parseConfigTable,
-	renderConfigTable,
+	migrateSettings,
 	resolvedStyle,
 } from './settings';
+import { isDarkTheme } from './util';
 import {
 	parseAnnotations,
 	Annotation,
@@ -101,10 +99,6 @@ export default class AnnotationManagerPlugin extends Plugin {
 	// back to this so their content doesn't blank out mid-switch.
 	private lastActiveMarkdownFile: TFile | null = null;
 	private debouncedRefresh = debounce(() => this._refreshSidebar(), 150, true);
-	private debouncedReloadConfig = debounce(() => {
-		void this.reloadConfigFile();
-	}, 8000);
-	private _writingConfigFile = false;
 
 	async onload() {
 		await this.loadSettings();
@@ -113,14 +107,8 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 		this.registerEditorExtension(createAnnotationViewPlugin(this));
 		this.registerEditorExtension(createCommentDecorationViewPlugin(this));
-		this.registerMarkdownPostProcessor((el, ctx) => {
+		this.registerMarkdownPostProcessor((el) => {
 			this.processReadingView(el);
-			if (
-				this.settings.configSource === 'file' &&
-				ctx.sourcePath === normalizePath(this.settings.configFilePath)
-			) {
-				this.processConfigTable(el, ctx.sourcePath);
-			}
 		});
 
 		this.registerView(SIDEBAR_VIEW_TYPE, (leaf) => new AnnotationSidebarView(leaf, this));
@@ -385,10 +373,6 @@ export default class AnnotationManagerPlugin extends Plugin {
 			this.updateLastActiveMarkdownFile(this.app.workspace.getActiveFile());
 			await this.indexAllFiles();
 
-			if (this.settings.configSource === 'file') {
-				await this.reloadConfigFile();
-			}
-
 			this.setupDataviewIntegration();
 			this.addRightSidebarButton();
 
@@ -407,14 +391,6 @@ export default class AnnotationManagerPlugin extends Plugin {
 					await this.indexFile(file);
 					this.injectDataviewMetadata(file);
 					this.debouncedRefresh();
-					// Auto-reload config when the config file changes (skip if we wrote it)
-					if (
-						this.settings.configSource === 'file' &&
-						file.path === this.settings.configFilePath &&
-						!this._writingConfigFile
-					) {
-						this.debouncedReloadConfig();
-					}
 				}
 			}),
 		);
@@ -455,11 +431,10 @@ export default class AnnotationManagerPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign(
-			{},
-			DEFAULT_SETTINGS,
-			(await this.loadData()) as Partial<AnnotationManagerSettings>,
-		);
+		// migrateSettings also converts data saved by older versions (single
+		// per-identifier style, comment delimiter/content blocks, config-file
+		// fields) into the current model.
+		this.settings = migrateSettings(await this.loadData());
 		this.syntaxHidingEnabled = this.settings.syntaxHidingEnabled;
 		this.identifierFormattingEnabled = this.settings.identifierFormattingEnabled;
 		this.textFormattingEnabled = this.settings.textFormattingEnabled;
@@ -725,6 +700,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 		let lastIndex = 0;
 		let lastAnnotationEnd = -1;
 		let lastAnnotationTag: { parent: string; child: string } | null = null;
+		const theme = isDarkTheme() ? 'dark' : 'light';
 
 		const re = new RegExp(AnnotationManagerPlugin.READING_COMBINED.source, 'g');
 		let m: RegExpExecArray | null;
@@ -743,7 +719,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 					const span = createSpan({ cls: 'cc-annotation' });
 					if (this.textFormattingEnabled) {
 						const style = resolvedStyle(parent, child, this.settings.identifierStyles);
-						if (style) this.applyInlineStyle(span, style);
+						if (style) this.applyInlineStyle(span, effectivePartColors(style, theme, 'text'));
 					}
 					span.appendChild(activeDocument.createTextNode((m[3] ?? '').trim()));
 					frag.appendChild(span);
@@ -770,7 +746,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 						const span = createSpan({ cls: 'cc-comment' });
 						if (this.commentsFormattingEnabled && parent) {
 							const style = resolvedStyle(parent, child, this.settings.identifierStyles);
-							if (style) this.applyInlineStyle(span, style);
+							if (style) this.applyInlineStyle(span, effectivePartColors(style, theme, 'text'));
 						}
 						span.appendChild(activeDocument.createTextNode((m[6] ?? '').trim()));
 						frag.appendChild(span);
@@ -787,134 +763,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 		return changed ? frag : null;
 	}
 
-	// ── Config-table color picker (reading view of AMConfig.md) ─────────────
-
-	private processConfigTable(el: HTMLElement, sourcePath: string): void {
-		const tables = el.querySelectorAll<HTMLTableElement>('table');
-		for (const table of Array.from(tables)) {
-			const ths = Array.from(table.querySelectorAll<HTMLTableCellElement>('th'));
-			const headers = ths.map((th) => th.textContent?.trim() ?? '');
-			const fontColorIdx = headers.findIndex((h) => h === 'Font Color');
-			const bgColorIdx = headers.findIndex((h) => h === 'Background Color');
-			if (fontColorIdx === -1 && bgColorIdx === -1) continue;
-
-			const rows = Array.from(table.querySelectorAll<HTMLTableRowElement>('tbody tr'));
-			for (const row of rows) {
-				const cells = Array.from(row.querySelectorAll<HTMLTableCellElement>('td'));
-				const identifier = cells[0]?.textContent?.trim() ?? '';
-				if (!identifier || identifier.startsWith('(')) continue;
-
-				if (fontColorIdx !== -1) {
-					const cell = cells[fontColorIdx];
-					if (cell) this.injectConfigColorPicker(cell, identifier, 'fontColor', sourcePath);
-				}
-				if (bgColorIdx !== -1) {
-					const cell = cells[bgColorIdx];
-					if (cell) this.injectConfigColorPicker(cell, identifier, 'bgColor', sourcePath);
-				}
-			}
-		}
-	}
-
-	private injectConfigColorPicker(
-		cell: HTMLTableCellElement,
-		identifier: string,
-		field: 'fontColor' | 'bgColor',
-		sourcePath: string,
-	): void {
-		const rawHex = cell.textContent?.trim() ?? '';
-		const fullHex = rawHex ? (rawHex.startsWith('#') ? rawHex : '#' + rawHex) : '#000000';
-		const isValidColorHex = /^#[0-9a-fA-F]{6}$/.test(fullHex);
-
-		cell.empty();
-		const picker = cell.createEl('input', {
-			cls: 'cc-config-color-picker',
-			attr: { type: 'color' },
-		});
-		picker.value = isValidColorHex ? fullHex : '#000000';
-		cell.appendText(rawHex);
-
-		picker.addEventListener('change', () => {
-			void (async () => {
-				const newHex = picker.value;
-				const file = this.app.vault.getAbstractFileByPath(sourcePath);
-				if (!(file instanceof TFile)) return;
-
-				const style = this.settings.identifierStyles[identifier];
-				if (style) {
-					if (field === 'fontColor') style.fontColor = newHex;
-					else style.backgroundColor = newHex;
-					await this.saveSettings();
-					this.bumpStyleVersion();
-				}
-
-				this._writingConfigFile = true;
-				try {
-					await this.app.vault.process(file, (content) => {
-						const withColor = this.updateConfigTableColor(content, identifier, field, newHex);
-						return injectExamples(withColor, this.settings.identifierStyles);
-					});
-				} finally {
-					this._writingConfigFile = false;
-				}
-			})();
-		});
-	}
-
-	private updateConfigTableColor(
-		content: string,
-		identifier: string,
-		field: 'fontColor' | 'bgColor',
-		newHex: string,
-	): string {
-		const hexWithoutHash = newHex.startsWith('#') ? newHex.slice(1) : newHex;
-		const lines = content.split('\n');
-		let headerSeen = false;
-		let separatorSeen = false;
-		let fontColorColIdx = -1;
-		let bgColorColIdx = -1;
-
-		return lines
-			.map((line) => {
-				const trimmed = line.trim();
-				if (!trimmed.startsWith('|')) return line;
-
-				if (/^\|[-|:\s]+\|?$/.test(trimmed)) {
-					if (headerSeen) separatorSeen = true;
-					return line;
-				}
-
-				if (!headerSeen) {
-					headerSeen = true;
-					const cols = trimmed
-						.replace(/^\|/, '')
-						.replace(/\|$/, '')
-						.split('|')
-						.map((c) => c.trim());
-					fontColorColIdx = cols.findIndex((c) => c === 'Font Color');
-					bgColorColIdx = cols.findIndex((c) => c === 'Background Color');
-					return line;
-				}
-
-				if (!separatorSeen) return line;
-
-				const cols = trimmed
-					.replace(/^\|/, '')
-					.replace(/\|$/, '')
-					.split('|')
-					.map((c) => c.trim());
-
-				if (cols[0] !== identifier) return line;
-
-				const targetIdx = field === 'fontColor' ? fontColorColIdx : bgColorColIdx;
-				if (targetIdx === -1 || targetIdx >= cols.length) return line;
-				cols[targetIdx] = hexWithoutHash;
-				return '| ' + cols.join(' | ') + ' |';
-			})
-			.join('\n');
-	}
-
-	private applyInlineStyle(el: HTMLElement, style: IdentifierStyle): void {
+	private applyInlineStyle(el: HTMLElement, style: EffectiveColors): void {
 		const css: Partial<CSSStyleDeclaration> = {};
 		if (style.fontColor) css.color = style.fontColor;
 		if (style.backgroundColor) css.backgroundColor = style.backgroundColor;
@@ -938,71 +787,6 @@ export default class AnnotationManagerPlugin extends Plugin {
 			// One unreadable file must not abort indexAllFiles' Promise.all
 			console.warn(`Annotation Manager: failed to index ${file.path}`, e);
 		}
-	}
-
-	// ── Config file integration ──────────────────────────────────────────────
-
-	async createConfigFile(): Promise<void> {
-		const content = renderConfigTable(this.settings.identifierStyles);
-		const path = normalizePath(this.settings.configFilePath || 'OccConfig.md');
-		try {
-			const existing = this.app.vault.getAbstractFileByPath(path);
-			if (existing instanceof TFile) {
-				await this.app.vault.process(existing, () => content);
-			} else {
-				await this.app.vault.create(path, content);
-			}
-			this.settings.configFilePath = path;
-			await this.saveSettings();
-			new Notice(`Config file saved: ${path}`);
-		} catch (e) {
-			new Notice(`Failed to write config file: ${e instanceof Error ? e.message : String(e)}`);
-		}
-	}
-
-	async reloadConfigFile(): Promise<void> {
-		const path = normalizePath(this.settings.configFilePath);
-		const file = this.app.vault.getAbstractFileByPath(path);
-		if (!(file instanceof TFile)) {
-			new Notice(`Config file not found: ${path}`);
-			return;
-		}
-		const content = await this.app.vault.read(file);
-		const parsed = parseConfigTable(content);
-
-		// Guard against wiping all styles when the config table is missing or
-		// malformed (parseConfigTable returns {} in that case).
-		if (
-			Object.keys(parsed).length === 0 &&
-			Object.keys(this.settings.identifierStyles).length > 0
-		) {
-			new Notice(
-				`No identifiers found in ${path} — keeping existing styles. Check the table format.`,
-			);
-			return;
-		}
-
-		this.settings.identifierStyles = parsed;
-		await this.saveSettings();
-		this.bumpStyleVersion();
-
-		// Update Example column in-place; write back only if something changed.
-		// vault.process re-reads the file so concurrent edits are not lost.
-		const updated = injectExamples(content, this.settings.identifierStyles);
-		if (updated !== content) {
-			this._writingConfigFile = true;
-			try {
-				await this.app.vault.process(file, (cur) =>
-					injectExamples(cur, this.settings.identifierStyles),
-				);
-			} finally {
-				this._writingConfigFile = false;
-			}
-		}
-
-		new Notice(
-			`Loaded ${Object.keys(this.settings.identifierStyles).length} identifiers from ${path}`,
-		);
 	}
 
 	// ── Dataview integration ─────────────────────────────────────────────────

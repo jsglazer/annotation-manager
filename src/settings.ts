@@ -1,36 +1,59 @@
-import { App, FuzzySuggestModal, PluginSettingTab, Setting, TFile } from 'obsidian';
+import { App, PluginSettingTab, Setting } from 'obsidian';
 import AnnotationManagerPlugin from './main';
-import { isUnsafeKey } from './util';
+import { isDarkTheme, isUnsafeKey } from './util';
 
+// ── Data model ─────────────────────────────────────────────────────────────
+// Every color is a ColorOption: a hex value plus an enabled flag (the
+// checkbox in the settings grids). A disabled color is not applied.
+
+export interface ColorOption {
+	enabled: boolean;
+	color: string; // '#rrggbb' or ''
+}
+
+// One Fr/Bg pair (Fr = foreground/text color, Bg = background color).
+export interface PartStyle {
+	fr: ColorOption;
+	bg: ColorOption;
+}
+
+// Bracket vs text styling for one theme.
+export interface ThemePartStyle {
+	bracket: PartStyle;
+	text: PartStyle;
+}
+
+// Per-identifier style: light/dark theme, bracket/text part, Fr/Bg each with
+// an enable checkbox, plus a row-level Use toggle and a font size.
 export interface IdentifierStyle {
+	use: boolean;
 	fontSize: string;
-	fontColor: string;
-	backgroundColor: string;
+	light: ThemePartStyle;
+	dark: ThemePartStyle;
+}
+
+// Colors for comments with no associated annotation tag (bracket = the
+// {@ / @} delimiters, text = the comment content).
+export interface UnassociatedCommentStyle {
+	light: ThemePartStyle;
+	dark: ThemePartStyle;
+}
+
+// Sidebar toggle-button colors: On = the button's function is enabled,
+// Off = disabled, per theme.
+export interface SidebarButtonThemeStyle {
+	on: PartStyle;
+	off: PartStyle;
+}
+
+export interface SidebarButtonStyle {
+	light: SidebarButtonThemeStyle;
+	dark: SidebarButtonThemeStyle;
 }
 
 export interface DelimiterColorStyle {
 	fontColor: string;
 	backgroundColor: string;
-}
-
-export interface CommentDelimiterStyle {
-	light: DelimiterColorStyle;
-	dark: DelimiterColorStyle;
-}
-
-export interface CommentContentStyle {
-	light: DelimiterColorStyle;
-	dark: DelimiterColorStyle;
-}
-
-export interface SidebarButtonStateStyle {
-	enabled: DelimiterColorStyle;
-	disabled: DelimiterColorStyle;
-}
-
-export interface SidebarButtonStyle {
-	light: SidebarButtonStateStyle;
-	dark: SidebarButtonStateStyle;
 }
 
 export interface SbFlashStyle {
@@ -41,8 +64,6 @@ export interface SbFlashStyle {
 export interface AnnotationManagerSettings {
 	// Key is "parent/child", "parent/*", or "parent"
 	identifierStyles: Record<string, IdentifierStyle>;
-	configSource: 'settings' | 'file';
-	configFilePath: string;
 
 	// Annotation visibility toggles
 	syntaxHidingEnabled: boolean;
@@ -55,78 +76,227 @@ export interface AnnotationManagerSettings {
 	commentsHiddenEnabled: boolean;
 	commentsFormattingEnabled: boolean;
 
-	// Fixed fore/background color for the {@ / @} delimiter glyphs themselves
-	// (independent of tag color), per light/dark theme.
-	commentDelimiterStyle: CommentDelimiterStyle;
-
-	// Fixed fore/background color for comment text itself (independent of tag
-	// color), per light/dark theme. Used when "Comments formatting" is on but
-	// no tag color resolved (untagged / non-adjacent comments).
-	commentContentStyle: CommentContentStyle;
+	// Colors for comments with no associated annotation tag.
+	unassociatedCommentStyle: UnassociatedCommentStyle;
 
 	// When the "Add comment" command runs immediately after (zero-space) an
 	// annotation, skip the identifier picker and inherit that annotation's tag
 	// instead of prompting the user.
 	commentAutoInheritAdjacentTag: boolean;
 
-	// Colors for the sidebar toggle-button rows (all buttons except SB), per
-	// light/dark theme, reflecting whether each button's function is on or off.
+	// Colors for the sidebar toggle-button rows, per light/dark theme,
+	// reflecting whether each button's function is on or off.
 	sidebarButtonStyle: SidebarButtonStyle;
 
 	// Color briefly flashed on the SB button when clicked, per light/dark theme.
 	sbFlashStyle: SbFlashStyle;
 }
 
-export const DEFAULT_SETTINGS: AnnotationManagerSettings = {
-	identifierStyles: {},
-	configSource: 'settings',
-	configFilePath: 'OccConfig.md',
+export function colorOption(color = ''): ColorOption {
+	return { enabled: color !== '', color };
+}
 
-	syntaxHidingEnabled: true,
-	identifierFormattingEnabled: true,
-	textFormattingEnabled: true,
+function partStyle(fr = '', bg = ''): PartStyle {
+	return { fr: colorOption(fr), bg: colorOption(bg) };
+}
 
-	commentBracketsHiddenEnabled: true,
-	commentBracketFormattingEnabled: true,
-	commentsHiddenEnabled: false,
-	commentsFormattingEnabled: true,
+function emptyThemePartStyle(): ThemePartStyle {
+	return { bracket: partStyle(), text: partStyle() };
+}
 
-	commentDelimiterStyle: {
-		light: { fontColor: '', backgroundColor: '' },
-		dark: { fontColor: '', backgroundColor: '' },
-	},
+export function makeIdentifierStyle(): IdentifierStyle {
+	return {
+		use: true,
+		fontSize: '',
+		light: emptyThemePartStyle(),
+		dark: emptyThemePartStyle(),
+	};
+}
 
-	commentContentStyle: {
-		light: { fontColor: '', backgroundColor: '' },
-		dark: { fontColor: '', backgroundColor: '' },
-	},
+export function defaultSettings(): AnnotationManagerSettings {
+	return {
+		identifierStyles: {},
 
-	commentAutoInheritAdjacentTag: true,
+		syntaxHidingEnabled: true,
+		identifierFormattingEnabled: true,
+		textFormattingEnabled: true,
 
-	sidebarButtonStyle: {
-		light: {
-			enabled: { fontColor: '#ffffff', backgroundColor: '#4a90e2' },
-			disabled: { fontColor: '#8a8a8a', backgroundColor: '#e8e8e8' },
+		commentBracketsHiddenEnabled: true,
+		commentBracketFormattingEnabled: true,
+		commentsHiddenEnabled: false,
+		commentsFormattingEnabled: true,
+
+		unassociatedCommentStyle: {
+			light: emptyThemePartStyle(),
+			dark: emptyThemePartStyle(),
 		},
-		dark: {
-			enabled: { fontColor: '#ffffff', backgroundColor: '#4a90e2' },
-			disabled: { fontColor: '#a0a0a0', backgroundColor: '#3a3a3a' },
+
+		commentAutoInheritAdjacentTag: true,
+
+		sidebarButtonStyle: {
+			light: {
+				on: partStyle('#ffffff', '#4a90e2'),
+				off: partStyle('#8a8a8a', '#e8e8e8'),
+			},
+			dark: {
+				on: partStyle('#ffffff', '#4a90e2'),
+				off: partStyle('#a0a0a0', '#3a3a3a'),
+			},
 		},
-	},
 
-	sbFlashStyle: {
-		light: { fontColor: '#ffffff', backgroundColor: '#e2984a' },
-		dark: { fontColor: '#ffffff', backgroundColor: '#e2984a' },
-	},
-};
+		sbFlashStyle: {
+			light: { fontColor: '#ffffff', backgroundColor: '#e2984a' },
+			dark: { fontColor: '#ffffff', backgroundColor: '#e2984a' },
+		},
+	};
+}
 
-export const EMPTY_STYLE: IdentifierStyle = {
-	fontSize: '',
-	fontColor: '',
-	backgroundColor: '',
-};
+// ── Settings migration ─────────────────────────────────────────────────────
+// Older versions stored a single {fontColor, backgroundColor, fontSize} per
+// identifier (no theme/part split), separate commentDelimiterStyle /
+// commentContentStyle blocks, enabled/disabled sidebar button colors, and the
+// config-file fields (configSource/configFilePath — dropped entirely).
+// migrateSettings accepts any of those shapes and produces the current model.
 
-// --- Helpers shared with decoration.ts and main.ts ---
+function asRecord(v: unknown): Record<string, unknown> | null {
+	return v !== null && typeof v === 'object' && !Array.isArray(v)
+		? (v as Record<string, unknown>)
+		: null;
+}
+
+function readString(v: unknown): string {
+	return typeof v === 'string' ? v : '';
+}
+
+function readColorOption(v: unknown): ColorOption {
+	const r = asRecord(v);
+	if (!r) return colorOption();
+	return {
+		enabled: r.enabled === true,
+		color: readString(r.color),
+	};
+}
+
+function readPartStyle(v: unknown): PartStyle {
+	const r = asRecord(v);
+	if (!r) return partStyle();
+	return { fr: readColorOption(r.fr), bg: readColorOption(r.bg) };
+}
+
+function readThemePartStyle(v: unknown): ThemePartStyle {
+	const r = asRecord(v);
+	if (!r) return emptyThemePartStyle();
+	return { bracket: readPartStyle(r.bracket), text: readPartStyle(r.text) };
+}
+
+// Legacy {fontColor, backgroundColor} → one PartStyle (enabled when non-empty).
+function legacyPartStyle(v: unknown): PartStyle {
+	const r = asRecord(v);
+	if (!r) return partStyle();
+	return partStyle(readString(r.fontColor), readString(r.backgroundColor));
+}
+
+function migrateIdentifierStyle(v: Record<string, unknown>): IdentifierStyle {
+	if ('light' in v || 'dark' in v) {
+		return {
+			use: v.use !== false,
+			fontSize: readString(v.fontSize),
+			light: readThemePartStyle(v.light),
+			dark: readThemePartStyle(v.dark),
+		};
+	}
+	// Legacy single style: same colors for both themes and both parts.
+	const fr = readString(v.fontColor);
+	const bg = readString(v.backgroundColor);
+	return {
+		use: true,
+		fontSize: readString(v.fontSize),
+		light: { bracket: partStyle(fr, bg), text: partStyle(fr, bg) },
+		dark: { bracket: partStyle(fr, bg), text: partStyle(fr, bg) },
+	};
+}
+
+export function migrateSettings(raw: unknown): AnnotationManagerSettings {
+	const s = defaultSettings();
+	const r = asRecord(raw);
+	if (!r) return s;
+
+	const booleanKeys = [
+		'syntaxHidingEnabled',
+		'identifierFormattingEnabled',
+		'textFormattingEnabled',
+		'commentBracketsHiddenEnabled',
+		'commentBracketFormattingEnabled',
+		'commentsHiddenEnabled',
+		'commentsFormattingEnabled',
+		'commentAutoInheritAdjacentTag',
+	] as const;
+	for (const key of booleanKeys) {
+		if (typeof r[key] === 'boolean') s[key] = r[key];
+	}
+
+	const styles = asRecord(r.identifierStyles);
+	if (styles) {
+		for (const [key, value] of Object.entries(styles)) {
+			if (isUnsafeKey(key)) continue;
+			const v = asRecord(value);
+			if (!v) continue;
+			s.identifierStyles[key] = migrateIdentifierStyle(v);
+		}
+	}
+
+	const ua = asRecord(r.unassociatedCommentStyle);
+	if (ua) {
+		s.unassociatedCommentStyle = {
+			light: readThemePartStyle(ua.light),
+			dark: readThemePartStyle(ua.dark),
+		};
+	} else {
+		// Legacy: delimiter colors → bracket, content colors → text.
+		const delim = asRecord(r.commentDelimiterStyle);
+		const content = asRecord(r.commentContentStyle);
+		for (const theme of ['light', 'dark'] as const) {
+			if (delim?.[theme]) s.unassociatedCommentStyle[theme].bracket = legacyPartStyle(delim[theme]);
+			if (content?.[theme]) s.unassociatedCommentStyle[theme].text = legacyPartStyle(content[theme]);
+		}
+	}
+
+	const sb = asRecord(r.sidebarButtonStyle);
+	if (sb) {
+		for (const theme of ['light', 'dark'] as const) {
+			const t = asRecord(sb[theme]);
+			if (!t) continue;
+			if ('on' in t || 'off' in t) {
+				s.sidebarButtonStyle[theme] = {
+					on: readPartStyle(t.on),
+					off: readPartStyle(t.off),
+				};
+			} else if ('enabled' in t || 'disabled' in t) {
+				// Legacy enabled/disabled naming
+				s.sidebarButtonStyle[theme] = {
+					on: legacyPartStyle(t.enabled),
+					off: legacyPartStyle(t.disabled),
+				};
+			}
+		}
+	}
+
+	const flash = asRecord(r.sbFlashStyle);
+	if (flash) {
+		for (const theme of ['light', 'dark'] as const) {
+			const t = asRecord(flash[theme]);
+			if (!t) continue;
+			s.sbFlashStyle[theme] = {
+				fontColor: readString(t.fontColor),
+				backgroundColor: readString(t.backgroundColor),
+			};
+		}
+	}
+
+	return s;
+}
+
+// ── Helpers shared with decoration.ts and main.ts ──────────────────────────
 
 export function identifierKeyToClass(key: string): string {
 	return (
@@ -138,18 +308,54 @@ export function identifierKeyToClass(key: string): string {
 	);
 }
 
+// Concrete colors to apply for one theme+part after checkboxes are resolved
+// ('' = do not apply).
+export interface EffectiveColors {
+	fontColor: string;
+	backgroundColor: string;
+	fontSize: string;
+}
+
+function enabledColor(opt: ColorOption): string {
+	return opt.enabled ? opt.color : '';
+}
+
+export function partColors(p: PartStyle): { fontColor: string; backgroundColor: string } {
+	return { fontColor: enabledColor(p.fr), backgroundColor: enabledColor(p.bg) };
+}
+
+export function effectivePartColors(
+	style: IdentifierStyle,
+	theme: 'light' | 'dark',
+	part: 'bracket' | 'text',
+): EffectiveColors {
+	const p = style[theme][part];
+	return { ...partColors(p), fontSize: style.fontSize };
+}
+
+// Resolve "parent/child" → exact match, then wildcard "parent/*"; bare parent
+// matches only its own entry. Rows with Use unchecked are skipped (so a
+// disabled exact match falls back to a wildcard, as if the row were absent).
+function resolveIdentifier(
+	parent: string,
+	child: string,
+	styles: Record<string, IdentifierStyle>,
+): { key: string; style: IdentifierStyle } | null {
+	const candidates = child ? [`${parent}/${child}`, `${parent}/*`] : [parent];
+	for (const key of candidates) {
+		const style = styles[key];
+		if (style?.use) return { key, style };
+	}
+	return null;
+}
+
 export function resolvedClass(
 	parent: string,
 	child: string,
 	styles: Record<string, IdentifierStyle>,
 ): string | null {
-	if (child) {
-		if (styles[`${parent}/${child}`]) return identifierKeyToClass(`${parent}/${child}`);
-		if (styles[`${parent}/*`]) return identifierKeyToClass(`${parent}/*`);
-	} else {
-		if (styles[parent]) return identifierKeyToClass(parent);
-	}
-	return null;
+	const hit = resolveIdentifier(parent, child, styles);
+	return hit ? identifierKeyToClass(hit.key) : null;
 }
 
 export function resolvedStyle(
@@ -157,16 +363,8 @@ export function resolvedStyle(
 	child: string,
 	styles: Record<string, IdentifierStyle>,
 ): IdentifierStyle | null {
-	if (child) {
-		if (styles[`${parent}/${child}`]) return styles[`${parent}/${child}`] ?? null;
-		if (styles[`${parent}/*`]) return styles[`${parent}/*`] ?? null;
-	} else {
-		if (styles[parent]) return styles[parent] ?? null;
-	}
-	return null;
+	return resolveIdentifier(parent, child, styles)?.style ?? null;
 }
-
-// --- Config file parse / render ---
 
 // Accepts hex with or without the # prefix; always stores WITH # (needed for CSS).
 export function normalizeHex(value: string): string {
@@ -177,143 +375,16 @@ export function normalizeHex(value: string): string {
 	return '';
 }
 
-function stripHash(hex: string): string {
-	return hex.startsWith('#') ? hex.slice(1) : hex;
-}
-
-// fontSize is free text that ends up in the global stylesheet and inline style
-// attributes — restrict it to a plain CSS length (12px, 1.1em, 90%…) or a bare
-// keyword (large, x-small…) so it cannot inject additional declarations/rules.
+// fontSize is free text that ends up in inline style attributes — restrict it
+// to a plain CSS length (12px, 1.1em, 90%…) or a bare keyword (large,
+// x-small…) so it cannot inject additional declarations/rules.
 export function isValidFontSize(value: string): boolean {
 	const v = value.trim();
 	if (!v) return false;
 	return /^\d+(\.\d+)?(px|pt|em|rem|%|vh|vw)$/.test(v) || /^[a-zA-Z-]+$/.test(v);
 }
 
-export function parseConfigTable(content: string): Record<string, IdentifierStyle> {
-	const styles: Record<string, IdentifierStyle> = {};
-	const lines = content.split('\n');
-	let headerSeen = false;
-	let separatorSeen = false;
-
-	for (const line of lines) {
-		const trimmed = line.trim();
-		if (!trimmed.startsWith('|')) continue;
-
-		if (/^\|[-|:\s]+\|?$/.test(trimmed)) {
-			if (headerSeen) separatorSeen = true;
-			continue;
-		}
-
-		if (!headerSeen) {
-			headerSeen = true;
-			continue;
-		}
-
-		if (!separatorSeen) continue;
-
-		const cols = trimmed
-			.replace(/^\|/, '')
-			.replace(/\|$/, '')
-			.split('|')
-			.map((c) => c.trim());
-
-		const [name = '', fontColor = '', bgColor = '', fontSize = ''] = cols;
-		// Skip empty names, placeholder rows like "(no identifiers configured)",
-		// and prototype-polluting keys from untrusted file content.
-		if (!name || name.startsWith('(') || isUnsafeKey(name)) continue;
-
-		styles[name] = {
-			fontColor: normalizeHex(fontColor),
-			backgroundColor: normalizeHex(bgColor),
-			fontSize: fontSize.trim(),
-		};
-	}
-
-	return styles;
-}
-
-function makeExampleCell(style: IdentifierStyle): string {
-	const parts: string[] = [];
-	if (style.fontColor) parts.push(`color: ${style.fontColor}`);
-	if (style.backgroundColor) parts.push(`background-color: ${style.backgroundColor}`);
-	if (isValidFontSize(style.fontSize)) parts.push(`font-size: ${style.fontSize.trim()}`);
-	if (parts.length === 0) return '';
-	return `<span style="${parts.join('; ')}">Example</span>`;
-}
-
-// Updates only the Example column cells in an existing config file, leaving everything else intact.
-export function injectExamples(content: string, styles: Record<string, IdentifierStyle>): string {
-	const lines = content.split('\n');
-	let headerSeen = false;
-	let separatorSeen = false;
-
-	const updated = lines.map((line) => {
-		const trimmed = line.trim();
-		if (!trimmed.startsWith('|')) return line;
-
-		if (/^\|[-|:\s]+\|?$/.test(trimmed)) {
-			if (headerSeen) separatorSeen = true;
-			return line;
-		}
-
-		if (!headerSeen) {
-			headerSeen = true;
-			return line;
-		}
-		if (!separatorSeen) return line;
-
-		const cols = trimmed
-			.replace(/^\|/, '')
-			.replace(/\|$/, '')
-			.split('|')
-			.map((c) => c.trim());
-		const [name = ''] = cols;
-		if (!name || name.startsWith('(')) return line;
-
-		const style = styles[name];
-		const example = style ? makeExampleCell(style) : '';
-
-		// Preserve all data columns (everything except the last/example column)
-		const numDataCols = Math.max(4, cols.length - 1);
-		const out = [...cols.slice(0, numDataCols)];
-		while (out.length < numDataCols) out.push('');
-		out.push(example);
-
-		return '| ' + out.join(' | ') + ' |';
-	});
-
-	return updated.join('\n');
-}
-
-export function renderConfigTable(styles: Record<string, IdentifierStyle>): string {
-	const header = [
-		'# Annotation Manager Config',
-		'',
-		'Edit this table to define identifier styles. Save the file to apply changes.',
-		'Do not use the `#` prefix for hex colors. Font size accepts any CSS value (e.g. `1.1em`, `14px`).',
-		'',
-		'| Identifier | Font Color | Background Color | Font Size | Example |',
-		'| ---------- | ---------- | ---------------- | --------- | ------- |',
-	].join('\n');
-
-	const entries = Object.entries(styles)
-		.filter((e): e is [string, IdentifierStyle] => e[1] !== undefined)
-		.sort(([a], [b]) => a.localeCompare(b));
-	const rows =
-		entries.length > 0
-			? entries
-					.map(
-						([id, s]) =>
-							`| ${id} | ${stripHash(s.fontColor)} | ${stripHash(s.backgroundColor)} | ${s.fontSize} | ${makeExampleCell(s)} |`,
-					)
-					.join('\n')
-			: '| (no identifiers configured) | | | | |';
-
-	return header + '\n' + rows + '\n';
-}
-
-// --- Color picker helpers ---
+// ── Color picker helpers ───────────────────────────────────────────────────
 
 function isValidHex(s: string): boolean {
 	return /^#[0-9a-fA-F]{6}$/.test(s);
@@ -334,119 +405,16 @@ function clearColorStyle(input: HTMLInputElement): void {
 	input.setCssStyles({ backgroundColor: '', color: '' });
 }
 
-// --- Typeahead helpers ---
-
-function vaultMarkdownPaths(app: App, query: string): string[] {
-	const q = query.toLowerCase();
-	return app.vault
-		.getMarkdownFiles()
-		.map((f) => f.path)
-		.filter((p) => p.toLowerCase().includes(q))
-		.sort()
-		.slice(0, 12);
-}
-
-// Dropdowns are appended to the document body, so they outlive their input if the
-// settings tab closes while one is open. Track open dropdowns globally and let
-// the settings tab close them on hide().
-const activeTypeaheadClosers = new Set<() => void>();
-
-export function closeAllTypeaheads(): void {
-	for (const close of [...activeTypeaheadClosers]) close();
-}
-
-function attachTypeahead(
-	input: HTMLInputElement,
-	getItems: (q: string) => string[],
-	onSelect: (v: string) => void,
-): void {
-	let dropdown: HTMLElement | null = null;
-	let els: HTMLElement[] = [];
-	let activeIndex = -1;
-
-	function close() {
-		dropdown?.remove();
-		dropdown = null;
-		els = [];
-		activeIndex = -1;
-		activeTypeaheadClosers.delete(close);
-	}
-
-	function updateActive() {
-		els.forEach((el, i) => el.toggleClass('cc-typeahead-active', i === activeIndex));
-	}
-
-	function open(items: string[]) {
-		close();
-		if (items.length === 0) return;
-
-		const rect = input.getBoundingClientRect();
-		dropdown = activeDocument.body.createDiv({ cls: 'cc-typeahead-dropdown' });
-		dropdown.setCssStyles({
-			top: rect.bottom + window.scrollY + 'px',
-			left: rect.left + window.scrollX + 'px',
-			width: rect.width + 'px',
-		});
-		activeTypeaheadClosers.add(close);
-
-		els = items.map((item) => {
-			const el = dropdown!.createDiv({ cls: 'cc-typeahead-item', text: item });
-			el.addEventListener('mousedown', (e) => {
-				e.preventDefault();
-				input.value = item;
-				onSelect(item);
-				close();
-			});
-			return el;
-		});
-	}
-
-	// addEventListener (not input.onkeydown =) so other handlers on the input survive
-	input.addEventListener('keydown', (e) => {
-		if (!dropdown) return;
-		if (e.key === 'ArrowDown') {
-			e.preventDefault();
-			activeIndex = Math.min(activeIndex + 1, els.length - 1);
-			updateActive();
-		} else if (e.key === 'ArrowUp') {
-			e.preventDefault();
-			activeIndex = Math.max(activeIndex - 1, 0);
-			updateActive();
-		} else if (e.key === 'Enter' && activeIndex >= 0) {
-			e.preventDefault();
-			const v = els[activeIndex]?.textContent ?? '';
-			input.value = v;
-			onSelect(v);
-			close();
-		} else if (e.key === 'Escape') close();
-	});
-
-	input.addEventListener('input', () => {
-		const q = input.value.trim();
-		if (!q) {
-			close();
-			return;
-		}
-		open(getItems(q));
-	});
-
-	input.addEventListener('blur', () => window.setTimeout(close, 160));
-}
-
-// --- Settings tab ---
+// ── Settings tab ───────────────────────────────────────────────────────────
 
 export class AnnotationManagerSettingTab extends PluginSettingTab {
 	plugin: AnnotationManagerPlugin;
 	private pendingIdentifier = '';
-	private activeTab: 'general' | 'annotations' | 'comments' | 'sidebar' = 'general';
+	private activeTab: 'general' | 'annotations' | 'comments' = 'general';
 
 	constructor(app: App, plugin: AnnotationManagerPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
-	}
-
-	hide(): void {
-		closeAllTypeaheads();
 	}
 
 	display(): void {
@@ -460,11 +428,10 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		});
 
 		const tabBar = containerEl.createDiv('cc-tab-bar');
-		const tabs: Array<{ id: 'general' | 'annotations' | 'comments' | 'sidebar'; label: string }> = [
+		const tabs: Array<{ id: 'general' | 'annotations' | 'comments'; label: string }> = [
 			{ id: 'general', label: 'General' },
 			{ id: 'annotations', label: 'Annotations' },
 			{ id: 'comments', label: 'Comments' },
-			{ id: 'sidebar', label: 'Sidebar' },
 		];
 		for (const tab of tabs) {
 			const btn = tabBar.createEl('button', {
@@ -485,11 +452,18 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			this.renderCommentsTab(containerEl);
 			return;
 		}
-		if (this.activeTab === 'sidebar') {
-			this.renderSidebarTab(containerEl);
-			return;
-		}
 
+		this.renderGeneralTab(containerEl);
+	}
+
+	private async saveAndRefresh(): Promise<void> {
+		await this.plugin.saveSettings();
+		this.plugin.bumpStyleVersion();
+	}
+
+	// ── General tab ──────────────────────────────────────────────────────────
+
+	private renderGeneralTab(containerEl: HTMLElement): void {
 		const infoPanel = containerEl.createDiv({ cls: 'cc-info-panel' });
 		const p0 = infoPanel.createEl('p');
 		p0.appendText('Full documentation, syntax reference, and settings walkthroughs are in the ');
@@ -518,33 +492,44 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		});
 		p2.appendText(' in the repository.');
 
-		// ── Config Source ──────────────────────────────────────────────────────
-		new Setting(containerEl).setName('Config source').setHeading();
+		// eslint-disable-next-line obsidianmd/settings-tab/no-problematic-settings-headings, obsidianmd/ui/sentence-case -- heading text specified by design
+		new Setting(containerEl).setName('Sidebar Format Options').setHeading();
+		containerEl.createEl('p', {
+			text:
+				'Colors applied to the sidebar toggle buttons (A-F, B-V, B-F, C-V, C-F) based on ' +
+				"whether that button's function is currently on or off. When the current note has " +
+				'no annotations or comments, all buttons turn grey instead.',
+			cls: 'setting-item-description',
+		});
+		this.renderSidebarButtonGrid(containerEl);
 
-		new Setting(containerEl)
-			.setName('Identifier style source')
-			.setDesc('Define styles in this UI, or read them from a Markdown table in your vault')
-			.addDropdown((dd) =>
-				dd
-					.addOption('settings', 'Settings UI')
-					.addOption('file', 'Config file')
-					.setValue(this.plugin.settings.configSource)
-					.onChange(async (v) => {
-						this.plugin.settings.configSource = v as 'settings' | 'file';
-						await this.plugin.saveSettings();
-						this.display();
-					}),
-			);
+		new Setting(containerEl).setName('SB flash colors').setHeading();
+		containerEl.createEl('p', {
+			text:
+				'Colors briefly flashed on the SB button when clicked, before it switches ' +
+				'between the Annotations and Comments sidebars.',
+			cls: 'setting-item-description',
+		});
 
-		if (this.plugin.settings.configSource === 'file') {
-			this.renderFileSourceUI(containerEl);
-		} else {
-			this.renderSettingsSourceUI(containerEl);
-		}
+		this.renderThemeColorBlock(
+			containerEl,
+			'Light theme',
+			'SB flash',
+			this.plugin.settings.sbFlashStyle.light,
+		);
+		this.renderThemeColorBlock(
+			containerEl,
+			'Dark theme',
+			'SB flash',
+			this.plugin.settings.sbFlashStyle.dark,
+		);
 	}
 
+	// ── Annotations tab ──────────────────────────────────────────────────────
+
 	private renderAnnotationsTab(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName('Annotations').setHeading();
+		// eslint-disable-next-line obsidianmd/ui/sentence-case -- heading text specified by design
+		new Setting(containerEl).setName('Annotation Visibility').setHeading();
 
 		this.renderToggle(
 			containerEl,
@@ -576,7 +561,207 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 				this.plugin.settings.textFormattingEnabled = v;
 			},
 		);
+
+		// eslint-disable-next-line obsidianmd/ui/sentence-case -- heading text specified by design
+		new Setting(containerEl).setName('Annotations & Associated Comments').setHeading();
+		containerEl.createEl('p', {
+			text:
+				'Per-identifier colors for annotations and their associated comments. ' +
+				'Brk = brackets/identifier, Text = content; Fr = text color, Bg = background. ' +
+				'Each checkbox controls whether that color is applied. Uncheck Use to disable ' +
+				'a row without deleting it. Specific identifiers (math/hot) take precedence ' +
+				'over wildcards (math/*).',
+			cls: 'setting-item-description',
+		});
+
+		this.renderIdentifierGrid(containerEl);
+
+		new Setting(containerEl)
+			.setName('Add identifier')
+			.setDesc('Format: parent/child  or  parent/* to match all children of a parent')
+			.addText((text) =>
+				text.setPlaceholder('math/hot').onChange((v) => {
+					this.pendingIdentifier = v.trim();
+				}),
+			)
+			.addButton((btn) =>
+				btn
+					.setButtonText('Add')
+					.setCta()
+					.onClick(async () => {
+						const id = this.pendingIdentifier;
+						if (!id || isUnsafeKey(id) || this.plugin.settings.identifierStyles[id]) return;
+						this.plugin.settings.identifierStyles[id] = makeIdentifierStyle();
+						await this.saveAndRefresh();
+						this.display();
+					}),
+			);
 	}
+
+	private renderIdentifierGrid(containerEl: HTMLElement): void {
+		const ids = Object.keys(this.plugin.settings.identifierStyles).sort();
+		if (ids.length === 0) {
+			containerEl.createEl('p', {
+				text: 'No identifiers configured yet — add one below.',
+				cls: 'setting-item-description',
+			});
+			return;
+		}
+
+		const wrap = containerEl.createDiv('cc-grid-wrap');
+		const table = wrap.createEl('table', { cls: 'cc-grid-table' });
+		const thead = table.createEl('thead');
+
+		const r1 = thead.createEl('tr');
+		r1.createEl('th', { text: 'Use', attr: { rowspan: '3' } });
+		r1.createEl('th', { text: 'ID', attr: { rowspan: '3' }, cls: 'cc-grid-id-h' });
+		r1.createEl('th', { text: 'Light', attr: { colspan: '4' }, cls: 'cc-grid-sep' });
+		r1.createEl('th', { text: 'Dark', attr: { colspan: '4' }, cls: 'cc-grid-sep' });
+		r1.createEl('th', { text: 'Size', attr: { rowspan: '3' }, cls: 'cc-grid-sep' });
+		r1.createEl('th', { text: 'Example', attr: { rowspan: '3' } });
+		r1.createEl('th', { text: '', attr: { rowspan: '3' } });
+
+		const r2 = thead.createEl('tr');
+		for (let i = 0; i < 4; i++) {
+			r2.createEl('th', {
+				text: i % 2 === 0 ? 'Brk' : 'Text',
+				attr: { colspan: '2' },
+				cls: i % 2 === 0 ? 'cc-grid-sep' : '',
+			});
+		}
+
+		const r3 = thead.createEl('tr');
+		for (let i = 0; i < 8; i++) {
+			r3.createEl('th', {
+				text: i % 2 === 0 ? 'Fr' : 'Bg',
+				cls: i % 4 === 0 ? 'cc-grid-sep' : '',
+			});
+		}
+
+		const tbody = table.createEl('tbody');
+		for (const id of ids) this.renderIdentifierRow(tbody, id);
+	}
+
+	private renderIdentifierRow(tbody: HTMLElement, id: string): void {
+		const style = this.plugin.settings.identifierStyles[id];
+		if (!style) return;
+
+		const tr = tbody.createEl('tr');
+		tr.toggleClass('cc-grid-row-unused', !style.use);
+
+		const useTd = tr.createEl('td');
+		const useCheck = useTd.createEl('input', { attr: { type: 'checkbox' }, cls: 'cc-grid-check' });
+		useCheck.checked = style.use;
+		useCheck.addEventListener('change', () => {
+			style.use = useCheck.checked;
+			tr.toggleClass('cc-grid-row-unused', !style.use);
+			void this.saveAndRefresh();
+		});
+
+		tr.createEl('td', { text: id, cls: 'cc-grid-id' });
+
+		let exampleTd: HTMLElement | null = null;
+		const refreshExample = () => {
+			if (exampleTd) this.renderIdentifierExample(exampleTd, id);
+		};
+
+		for (const theme of ['light', 'dark'] as const) {
+			for (const part of ['bracket', 'text'] as const) {
+				for (const field of ['fr', 'bg'] as const) {
+					const td = tr.createEl('td', {
+						cls: part === 'bracket' && field === 'fr' ? 'cc-grid-sep' : '',
+					});
+					this.renderColorCell(td, style[theme][part][field], refreshExample);
+				}
+			}
+		}
+
+		const sizeTd = tr.createEl('td', { cls: 'cc-grid-sep' });
+		const sizeInput = sizeTd.createEl('input', {
+			cls: 'cc-grid-size-input',
+			attr: { type: 'text', placeholder: '—' },
+		});
+		sizeInput.value = style.fontSize;
+		sizeInput.addEventListener('change', () => {
+			style.fontSize = sizeInput.value.trim();
+			void this.saveAndRefresh();
+			refreshExample();
+		});
+
+		exampleTd = tr.createEl('td', { cls: 'cc-grid-example' });
+		refreshExample();
+
+		const delTd = tr.createEl('td');
+		const delBtn = delTd.createEl('button', { text: 'Del', cls: 'cc-grid-del' });
+		delBtn.addEventListener('click', () => {
+			delete this.plugin.settings.identifierStyles[id];
+			void this.saveAndRefresh().then(() => this.display());
+		});
+	}
+
+	private renderIdentifierExample(td: HTMLElement, id: string): void {
+		td.empty();
+		const style = this.plugin.settings.identifierStyles[id];
+		if (!style) return;
+		const theme = isDarkTheme() ? 'dark' : 'light';
+		const bracket = effectivePartColors(style, theme, 'bracket');
+		const text = effectivePartColors(style, theme, 'text');
+		this.appendExampleSpan(td, `{={${id}}`, bracket.fontColor, bracket.backgroundColor, '');
+		this.appendExampleSpan(
+			td,
+			'text',
+			text.fontColor,
+			text.backgroundColor,
+			isValidFontSize(style.fontSize) ? style.fontSize.trim() : '',
+		);
+		this.appendExampleSpan(td, '=}', bracket.fontColor, bracket.backgroundColor, '');
+	}
+
+	private appendExampleSpan(
+		td: HTMLElement,
+		text: string,
+		color: string,
+		backgroundColor: string,
+		fontSize: string,
+	): void {
+		const span = td.createEl('span', { text });
+		span.setCssStyles({ color, backgroundColor, fontSize });
+	}
+
+	// One checkbox-over-swatch cell bound to a ColorOption. Picking a color
+	// auto-enables the checkbox; the checkbox alone toggles whether the stored
+	// color is applied.
+	private renderColorCell(td: HTMLElement, opt: ColorOption, onChanged: () => void): void {
+		const wrap = td.createDiv('cc-grid-cell');
+		const check = wrap.createEl('input', { attr: { type: 'checkbox' }, cls: 'cc-grid-check' });
+		check.checked = opt.enabled;
+		const picker = wrap.createEl('input', { attr: { type: 'color' }, cls: 'cc-grid-color' });
+		picker.value = isValidHex(opt.color) ? opt.color : '#888888';
+
+		check.addEventListener('change', () => {
+			opt.enabled = check.checked;
+			if (opt.enabled && !isValidHex(opt.color)) opt.color = picker.value;
+			void this.saveAndRefresh();
+			onChanged();
+		});
+		// 'input' fires continuously while dragging in the color dialog — update
+		// the example live but only persist on 'change' (dialog closed).
+		picker.addEventListener('input', () => {
+			opt.color = picker.value;
+			if (!opt.enabled) {
+				opt.enabled = true;
+				check.checked = true;
+			}
+			onChanged();
+		});
+		picker.addEventListener('change', () => {
+			opt.color = picker.value;
+			void this.saveAndRefresh();
+			onChanged();
+		});
+	}
+
+	// ── Comments tab ─────────────────────────────────────────────────────────
 
 	private renderCommentsTab(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName('Comment visibility').setHeading();
@@ -636,48 +821,145 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 				}),
 			);
 
-		new Setting(containerEl).setName('Comment delimiter').setHeading();
+		new Setting(containerEl).setName('Comments (unassociated)').setHeading();
 		containerEl.createEl('p', {
 			text:
-				'Color the {@ and @} delimiter characters shown when brackets are not hidden, ' +
-				'independent of tag color.',
+				'Colors for comments with no associated annotation tag (untagged comments, or ' +
+				'comments not adjacent to an annotation). Brk colors the {@ and @} delimiters; ' +
+				'Text colors the comment text.',
 			cls: 'setting-item-description',
 		});
 
-		this.renderThemeColorBlock(
-			containerEl,
-			'Light theme',
-			'delimiter',
-			this.plugin.settings.commentDelimiterStyle.light,
-		);
-		this.renderThemeColorBlock(
-			containerEl,
-			'Dark theme',
-			'delimiter',
-			this.plugin.settings.commentDelimiterStyle.dark,
-		);
-
-		new Setting(containerEl).setName('Comment content').setHeading();
-		containerEl.createEl('p', {
-			text:
-				'Color the comment text itself when no tag color applies (untagged comments, or ' +
-				'comments not adjacent to an annotation), independent of tag color.',
-			cls: 'setting-item-description',
-		});
-
-		this.renderThemeColorBlock(
-			containerEl,
-			'Light theme',
-			'content',
-			this.plugin.settings.commentContentStyle.light,
-		);
-		this.renderThemeColorBlock(
-			containerEl,
-			'Dark theme',
-			'content',
-			this.plugin.settings.commentContentStyle.dark,
-		);
+		this.renderUnassociatedGrid(containerEl);
 	}
+
+	private renderUnassociatedGrid(containerEl: HTMLElement): void {
+		const style = this.plugin.settings.unassociatedCommentStyle;
+
+		const wrap = containerEl.createDiv('cc-grid-wrap');
+		const table = wrap.createEl('table', { cls: 'cc-grid-table' });
+		const thead = table.createEl('thead');
+
+		const r1 = thead.createEl('tr');
+		r1.createEl('th', { text: 'Light', attr: { colspan: '4' } });
+		r1.createEl('th', { text: 'Dark', attr: { colspan: '4' }, cls: 'cc-grid-sep' });
+		r1.createEl('th', { text: 'Example', attr: { rowspan: '3' }, cls: 'cc-grid-sep' });
+
+		const r2 = thead.createEl('tr');
+		for (let i = 0; i < 4; i++) {
+			r2.createEl('th', {
+				text: i % 2 === 0 ? 'Brk' : 'Text',
+				attr: { colspan: '2' },
+				cls: i % 2 === 0 && i > 0 ? 'cc-grid-sep' : '',
+			});
+		}
+
+		const r3 = thead.createEl('tr');
+		for (let i = 0; i < 8; i++) {
+			r3.createEl('th', {
+				text: i % 2 === 0 ? 'Fr' : 'Bg',
+				cls: i > 0 && i % 4 === 0 ? 'cc-grid-sep' : '',
+			});
+		}
+
+		const tbody = table.createEl('tbody');
+		const tr = tbody.createEl('tr');
+
+		let exampleTd: HTMLElement | null = null;
+		const refreshExample = () => {
+			if (!exampleTd) return;
+			exampleTd.empty();
+			const theme = isDarkTheme() ? 'dark' : 'light';
+			const bracket = partColors(style[theme].bracket);
+			const text = partColors(style[theme].text);
+			this.appendExampleSpan(exampleTd, '{@', bracket.fontColor, bracket.backgroundColor, '');
+			this.appendExampleSpan(exampleTd, 'comment', text.fontColor, text.backgroundColor, '');
+			this.appendExampleSpan(exampleTd, '@}', bracket.fontColor, bracket.backgroundColor, '');
+		};
+
+		for (const theme of ['light', 'dark'] as const) {
+			for (const part of ['bracket', 'text'] as const) {
+				for (const field of ['fr', 'bg'] as const) {
+					const td = tr.createEl('td', {
+						cls: theme === 'dark' && part === 'bracket' && field === 'fr' ? 'cc-grid-sep' : '',
+					});
+					this.renderColorCell(td, style[theme][part][field], refreshExample);
+				}
+			}
+		}
+
+		exampleTd = tr.createEl('td', { cls: 'cc-grid-example cc-grid-sep' });
+		refreshExample();
+	}
+
+	// ── Sidebar Format Options grid (General tab) ────────────────────────────
+
+	private renderSidebarButtonGrid(containerEl: HTMLElement): void {
+		const style = this.plugin.settings.sidebarButtonStyle;
+
+		const wrap = containerEl.createDiv('cc-grid-wrap');
+		const table = wrap.createEl('table', { cls: 'cc-grid-table' });
+		const thead = table.createEl('thead');
+
+		const r1 = thead.createEl('tr');
+		r1.createEl('th', { text: 'Light', attr: { colspan: '4' } });
+		r1.createEl('th', { text: 'Dark', attr: { colspan: '4' }, cls: 'cc-grid-sep' });
+		r1.createEl('th', { text: 'Example', attr: { rowspan: '3' }, cls: 'cc-grid-sep' });
+
+		const r2 = thead.createEl('tr');
+		for (let i = 0; i < 4; i++) {
+			r2.createEl('th', {
+				text: i % 2 === 0 ? 'On' : 'Off',
+				attr: { colspan: '2' },
+				cls: i % 2 === 0 && i > 0 ? 'cc-grid-sep' : '',
+			});
+		}
+
+		const r3 = thead.createEl('tr');
+		for (let i = 0; i < 8; i++) {
+			r3.createEl('th', {
+				text: i % 2 === 0 ? 'Fr' : 'Bg',
+				cls: i > 0 && i % 4 === 0 ? 'cc-grid-sep' : '',
+			});
+		}
+
+		const tbody = table.createEl('tbody');
+		const tr = tbody.createEl('tr');
+
+		let exampleTd: HTMLElement | null = null;
+		const refreshExample = () => {
+			if (!exampleTd) return;
+			exampleTd.empty();
+			const theme = isDarkTheme() ? 'dark' : 'light';
+			const on = partColors(style[theme].on);
+			const off = partColors(style[theme].off);
+			const onChip = exampleTd.createEl('span', { text: 'On', cls: 'cc-grid-example-btn' });
+			onChip.setCssStyles({ color: on.fontColor, backgroundColor: on.backgroundColor });
+			const offChip = exampleTd.createEl('span', { text: 'Off', cls: 'cc-grid-example-btn' });
+			offChip.setCssStyles({ color: off.fontColor, backgroundColor: off.backgroundColor });
+		};
+
+		const onChanged = () => {
+			refreshExample();
+			this.plugin.refreshSidebar();
+		};
+
+		for (const theme of ['light', 'dark'] as const) {
+			for (const state of ['on', 'off'] as const) {
+				for (const field of ['fr', 'bg'] as const) {
+					const td = tr.createEl('td', {
+						cls: theme === 'dark' && state === 'on' && field === 'fr' ? 'cc-grid-sep' : '',
+					});
+					this.renderColorCell(td, style[theme][state][field], onChanged);
+				}
+			}
+		}
+
+		exampleTd = tr.createEl('td', { cls: 'cc-grid-example cc-grid-sep' });
+		refreshExample();
+	}
+
+	// ── Shared small controls ────────────────────────────────────────────────
 
 	private renderThemeColorBlock(
 		containerEl: HTMLElement,
@@ -714,104 +996,6 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		);
 	}
 
-	private renderSidebarTab(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName('Sidebar button colors').setHeading();
-		containerEl.createEl('p', {
-			text:
-				'Colors applied to the sidebar toggle buttons (A-F, B-V, B-F, C-V, C-F) based on ' +
-				"whether that button's function is currently on or off. The SB button is unaffected.",
-			cls: 'setting-item-description',
-		});
-
-		this.renderSidebarButtonThemeBlock(
-			containerEl,
-			'Light theme',
-			this.plugin.settings.sidebarButtonStyle.light,
-		);
-		this.renderSidebarButtonThemeBlock(
-			containerEl,
-			'Dark theme',
-			this.plugin.settings.sidebarButtonStyle.dark,
-		);
-
-		new Setting(containerEl).setName('SB flash colors').setHeading();
-		containerEl.createEl('p', {
-			text:
-				'Colors briefly flashed on the SB button when clicked, before it switches ' +
-				'between the Annotations and Comments sidebars.',
-			cls: 'setting-item-description',
-		});
-
-		this.renderThemeColorBlock(
-			containerEl,
-			'Light theme',
-			'SB flash',
-			this.plugin.settings.sbFlashStyle.light,
-		);
-		this.renderThemeColorBlock(
-			containerEl,
-			'Dark theme',
-			'SB flash',
-			this.plugin.settings.sbFlashStyle.dark,
-		);
-	}
-
-	private renderSidebarButtonThemeBlock(
-		containerEl: HTMLElement,
-		label: string,
-		style: SidebarButtonStateStyle,
-	): void {
-		const wrap = containerEl.createDiv('cc-identifier-block');
-		const heading = new Setting(wrap).setName(label).setHeading();
-		heading.settingEl.addClass('cc-setting-heading-lvl2');
-
-		const refresh = async () => {
-			await this.plugin.saveSettings();
-			this.plugin.refreshSidebar();
-		};
-
-		this.renderColorSetting(
-			wrap,
-			'Enabled text color',
-			`Text color for an enabled button in ${label.toLowerCase()}`,
-			() => style.enabled.fontColor,
-			async (v) => {
-				style.enabled.fontColor = v;
-				await refresh();
-			},
-		);
-		this.renderColorSetting(
-			wrap,
-			'Enabled background color',
-			`Background color for an enabled button in ${label.toLowerCase()}`,
-			() => style.enabled.backgroundColor,
-			async (v) => {
-				style.enabled.backgroundColor = v;
-				await refresh();
-			},
-		);
-		this.renderColorSetting(
-			wrap,
-			'Disabled text color',
-			`Text color for a disabled button in ${label.toLowerCase()}`,
-			() => style.disabled.fontColor,
-			async (v) => {
-				style.disabled.fontColor = v;
-				await refresh();
-			},
-		);
-		this.renderColorSetting(
-			wrap,
-			'Disabled background color',
-			`Background color for a disabled button in ${label.toLowerCase()}`,
-			() => style.disabled.backgroundColor,
-			async (v) => {
-				style.disabled.backgroundColor = v;
-				await refresh();
-			},
-		);
-	}
-
 	private renderToggle(
 		containerEl: HTMLElement,
 		name: string,
@@ -829,206 +1013,6 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 					this.plugin.bumpStyleVersion();
 				}),
 			);
-	}
-
-	private renderFileSourceUI(containerEl: HTMLElement): void {
-		let configPathInput: HTMLInputElement | null = null;
-
-		new Setting(containerEl)
-			.setName('Config file path')
-			.setDesc(
-				'Path to a Markdown file in your vault (relative to vault root) containing the style table',
-			)
-			.addText((t) => {
-				configPathInput = t.inputEl;
-				attachTypeahead(
-					t.inputEl,
-					(q) => vaultMarkdownPaths(this.app, q),
-					(v) => {
-						this.plugin.settings.configFilePath = v;
-						void this.plugin.saveSettings();
-						t.setValue(v);
-					},
-				);
-				t.setPlaceholder('OccConfig.md')
-					.setValue(this.plugin.settings.configFilePath)
-					.onChange(async (v) => {
-						this.plugin.settings.configFilePath = v.trim() || 'OccConfig.md';
-						await this.plugin.saveSettings();
-					});
-			})
-			.addButton((btn) =>
-				btn.setButtonText('Browse…').onClick(() => {
-					new VaultFileSuggestModal(this.app, (file) => {
-						this.plugin.settings.configFilePath = file.path;
-						void this.plugin.saveSettings();
-						if (configPathInput) configPathInput.value = file.path;
-					}).open();
-				}),
-			);
-
-		new Setting(containerEl)
-			.setName('Config file actions')
-			.addButton((btn) =>
-				btn
-					.setButtonText('Create / update config file')
-					.setCta()
-					.onClick(async () => {
-						await this.plugin.createConfigFile();
-						this.display();
-					}),
-			)
-			.addButton((btn) =>
-				btn.setButtonText('Reload from file').onClick(async () => {
-					await this.plugin.reloadConfigFile();
-					this.display();
-				}),
-			);
-
-		containerEl.createEl('p', {
-			text:
-				'Table columns: Identifier | Font Color | Background Color | Font Size | Example. ' +
-				'No # prefix for hex colors. The plugin reloads automatically when the file is saved.',
-			cls: 'setting-item-description',
-		});
-
-		const styles = this.plugin.settings.identifierStyles;
-		const ids = Object.keys(styles).sort();
-		new Setting(containerEl).setName('Currently loaded identifiers').setHeading();
-
-		if (ids.length === 0) {
-			containerEl.createEl('p', {
-				text: 'None — create or reload the config file.',
-				cls: 'setting-item-description',
-			});
-		} else {
-			const previewList = containerEl.createDiv('cc-file-preview-list');
-			for (const id of ids) {
-				const s = styles[id];
-				if (!s) continue;
-				const row = previewList.createDiv('cc-file-preview-row');
-				row.createEl('span', { text: id, cls: 'cc-file-preview-id' });
-				const sample = row.createEl('span', { text: 'Example', cls: 'cc-file-preview-sample' });
-				sample.setCssStyles({
-					color: s.fontColor || '',
-					backgroundColor: s.backgroundColor || '',
-					fontSize: s.fontSize || '',
-				});
-			}
-		}
-	}
-
-	private renderSettingsSourceUI(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName('Identifier styles').setHeading();
-		containerEl.createEl('p', {
-			text:
-				'Add an identifier (e.g. "math/hot") or a wildcard (e.g. "math/*"). ' +
-				'Specific identifiers take precedence over wildcards.',
-		});
-
-		for (const id of Object.keys(this.plugin.settings.identifierStyles)) {
-			this.renderIdentifierBlock(containerEl, id);
-		}
-
-		new Setting(containerEl).setName('Add identifier').setHeading();
-		new Setting(containerEl)
-			.setName('Identifier')
-			.setDesc('Format: parent/child  or  parent/* to match all children of a parent')
-			.addText((text) =>
-				text.setPlaceholder('math/hot').onChange((v) => {
-					this.pendingIdentifier = v.trim();
-				}),
-			)
-			.addButton((btn) =>
-				btn
-					.setButtonText('Add')
-					.setCta()
-					.onClick(async () => {
-						const id = this.pendingIdentifier;
-						if (!id || this.plugin.settings.identifierStyles[id]) return;
-						this.plugin.settings.identifierStyles[id] = { ...EMPTY_STYLE };
-						await this.plugin.saveSettings();
-						this.display();
-					}),
-			);
-	}
-
-	private renderIdentifierBlock(containerEl: HTMLElement, id: string): void {
-		const style = this.plugin.settings.identifierStyles[id];
-		if (!style) return;
-		const wrap = containerEl.createDiv('cc-identifier-block');
-		new Setting(wrap).setName(id).setHeading();
-
-		// Live preview — updated automatically whenever any style property changes
-		const previewWrap = wrap.createEl('div', { cls: 'cc-style-preview' });
-		const previewSpan = previewWrap.createEl('span', {
-			text: 'Sample annotation text',
-			cls: 'cc-style-preview-sample',
-		});
-
-		const updatePreview = () => {
-			const s = this.plugin.settings.identifierStyles[id];
-			if (!s) return;
-			previewSpan.setCssStyles({
-				color: s.fontColor || '',
-				backgroundColor: s.backgroundColor || '',
-				fontSize: s.fontSize || '',
-			});
-		};
-		updatePreview();
-
-		new Setting(wrap)
-			.setName('Font size')
-			.setDesc('CSS value, e.g. 14px or 1.2em — leave blank to inherit')
-			.addText((t) =>
-				t
-					.setPlaceholder('inherit')
-					.setValue(style.fontSize)
-					.onChange(async (v) => {
-						style.fontSize = v;
-						await this.plugin.saveSettings();
-						this.plugin.bumpStyleVersion();
-						updatePreview();
-					}),
-			);
-
-		this.renderColorSetting(
-			wrap,
-			'Font color',
-			'Hex color for the annotation text',
-			() => style.fontColor,
-			async (v) => {
-				style.fontColor = v;
-				await this.plugin.saveSettings();
-				this.plugin.bumpStyleVersion();
-				updatePreview();
-			},
-		);
-
-		this.renderColorSetting(
-			wrap,
-			'Background color',
-			'Hex color for the annotation background',
-			() => style.backgroundColor,
-			async (v) => {
-				style.backgroundColor = v;
-				await this.plugin.saveSettings();
-				this.plugin.bumpStyleVersion();
-				updatePreview();
-			},
-		);
-
-		new Setting(wrap).addButton((btn) =>
-			btn
-				.setButtonText('Remove')
-				.setWarning()
-				.onClick(async () => {
-					delete this.plugin.settings.identifierStyles[id];
-					await this.plugin.saveSettings();
-					this.plugin.bumpStyleVersion();
-					this.display();
-				}),
-		);
 	}
 
 	private renderColorSetting(
@@ -1079,29 +1063,5 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 				void onChange('');
 			}
 		});
-	}
-}
-
-// ── Vault file picker modal ───────────────────────────────────────────────
-
-class VaultFileSuggestModal extends FuzzySuggestModal<TFile> {
-	constructor(
-		app: App,
-		private onChoose: (file: TFile) => void,
-	) {
-		super(app);
-		this.setPlaceholder('Search for a Markdown file…');
-	}
-
-	getItems(): TFile[] {
-		return this.app.vault.getMarkdownFiles().sort((a, b) => a.path.localeCompare(b.path));
-	}
-
-	getItemText(file: TFile): string {
-		return file.path;
-	}
-
-	onChooseItem(file: TFile): void {
-		this.onChoose(file);
 	}
 }

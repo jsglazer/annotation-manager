@@ -1,7 +1,15 @@
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
 import { RangeSetBuilder } from '@codemirror/state';
-import { IdentifierStyle, isValidFontSize, resolvedClass, resolvedStyle } from './settings';
+import {
+	EffectiveColors,
+	effectivePartColors,
+	isValidFontSize,
+	partColors,
+	resolvedClass,
+	resolvedStyle,
+} from './settings';
 import { COMMENT_PATTERN } from './parser';
+import { isDarkTheme } from './util';
 import AnnotationManagerPlugin from './main';
 
 // New syntax: {={parent/child}content=}  or  {={parent}content=}
@@ -24,37 +32,17 @@ function isLivePreview(view: EditorView): boolean {
 	return view.dom.closest('.is-live-preview') !== null;
 }
 
-function isDarkTheme(): boolean {
-	return activeDocument.body.classList.contains('theme-dark');
-}
-
-// Fixed fore/background color for the {@ / @} delimiter glyphs, independent of
-// tag color. Returns null when no color is configured for the active theme.
-function delimiterStyleMark(plugin: AnnotationManagerPlugin): Decoration | null {
+// Fixed fore/background color for a part (bracket or text) of comments with no
+// associated annotation tag. The bracket part is what colors the {@ / @}
+// delimiter glyphs; the text part is what makes "Comments formatting" visibly
+// do something for comments with no resolved tag. Returns null when no color
+// is enabled for the active theme.
+function unassociatedStyleMark(
+	plugin: AnnotationManagerPlugin,
+	part: 'bracket' | 'text',
+): Decoration | null {
 	const theme = isDarkTheme() ? 'dark' : 'light';
-	const s = plugin.settings.commentDelimiterStyle[theme];
-	if (!s.fontColor && !s.backgroundColor) return null;
-
-	const parts: string[] = [];
-	const classes = ['cc-annotation-editor'];
-	if (s.fontColor) {
-		parts.push(`color: ${s.fontColor}`);
-		parts.push(`--cc-fg: ${s.fontColor}`);
-		classes.push('cc-fg');
-	}
-	if (s.backgroundColor) parts.push(`background-color: ${s.backgroundColor}`);
-
-	return Decoration.mark({ class: classes.join(' '), attributes: { style: parts.join('; ') } });
-}
-
-// Fixed fore/background color for comment text, independent of tag color.
-// This is what makes "Comments formatting" visibly do something for comments
-// with no resolved tag (untagged, not adjacent to an annotation) — without it
-// there is no tag color to toggle and the setting has no visible effect.
-// Returns null when no color is configured for the active theme.
-function contentStyleMark(plugin: AnnotationManagerPlugin): Decoration | null {
-	const theme = isDarkTheme() ? 'dark' : 'light';
-	const s = plugin.settings.commentContentStyle[theme];
+	const s = partColors(plugin.settings.unassociatedCommentStyle[theme][part]);
 	if (!s.fontColor && !s.backgroundColor) return null;
 
 	const parts: string[] = [];
@@ -98,7 +86,7 @@ function isInCodeRange(relFrom: number, relTo: number, ranges: Array<[number, nu
 // stylesheet rule, and Obsidian's editor token rules are not !important).
 // --cc-fg is published so nested CM6 syntax tokens can inherit the annotation
 // color via the .cc-fg child rule in styles.css.
-function makeColorMark(cls: string, style: IdentifierStyle | null): Decoration {
+function makeColorMark(cls: string, style: EffectiveColors | null): Decoration {
 	const parts: string[] = [];
 	const classes = ['cc-annotation-editor', cls];
 	if (style?.fontColor) {
@@ -148,6 +136,7 @@ function buildDecorations(view: EditorView, plugin: AnnotationManagerPlugin): Bu
 	const annotationRanges: Array<[number, number]> = [];
 	const { selection } = view.state;
 	const inLP = isLivePreview(view);
+	const theme = isDarkTheme() ? 'dark' : 'light';
 
 	for (const { from, to } of view.visibleRanges) {
 		const text = view.state.doc.sliceString(from, to);
@@ -172,6 +161,8 @@ function buildDecorations(view: EditorView, plugin: AnnotationManagerPlugin): Bu
 			const content = match[3] ?? '';
 			const cls = resolvedClass(parent, child, plugin.settings.identifierStyles);
 			const style = resolvedStyle(parent, child, plugin.settings.identifierStyles);
+			const textColors = style ? effectivePartColors(style, theme, 'text') : null;
+			const bracketColors = style ? effectivePartColors(style, theme, 'bracket') : null;
 
 			// prefixLen = length of {={identifier} — the part before the content
 			const prefixLen = fullLen - content.length - 2; // 2 = length of =}
@@ -185,16 +176,18 @@ function buildDecorations(view: EditorView, plugin: AnnotationManagerPlugin): Bu
 				builder.add(start, contentStart, HIDE);
 				if (contentStart < suffixStart) {
 					const textMark =
-						plugin.textFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
+						plugin.textFormattingEnabled && cls ? makeColorMark(cls, textColors) : NEUTRAL_MARK;
 					addContentMarks(builder, contentStart, suffixStart, content, textMark);
 				}
 				builder.add(suffixStart, end, HIDE);
 			} else {
 				// Source mode or cursor inside LP: apply separate marks for identifier and content.
 				const idMark =
-					plugin.identifierFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
+					plugin.identifierFormattingEnabled && cls
+						? makeColorMark(cls, bracketColors)
+						: NEUTRAL_MARK;
 				const textMark =
-					plugin.textFormattingEnabled && cls ? makeColorMark(cls, style) : NEUTRAL_MARK;
+					plugin.textFormattingEnabled && cls ? makeColorMark(cls, textColors) : NEUTRAL_MARK;
 
 				if (contentStart > start) builder.add(start, contentStart, idMark);
 
@@ -280,6 +273,7 @@ function buildCommentDecorations(
 	const commentRanges: Array<[number, number]> = [];
 	const { selection } = view.state;
 	const inLP = isLivePreview(view);
+	const theme = isDarkTheme() ? 'dark' : 'light';
 
 	for (const { from, to } of view.visibleRanges) {
 		const text = view.state.doc.sliceString(from, to);
@@ -325,13 +319,13 @@ function buildCommentDecorations(
 			const cls = resolvedClass(parent, child, plugin.settings.identifierStyles);
 			const style = resolvedStyle(parent, child, plugin.settings.identifierStyles);
 			// Tag color wins when formatting is on and a tag resolved; otherwise fall
-			// back to the fixed Comment Content color so untagged/non-adjacent
+			// back to the unassociated-comment text color so untagged/non-adjacent
 			// comments still respond to the "Comments formatting" toggle. Both branches
 			// stay under the enabled check so turning formatting off always clears color.
 			const textMark = plugin.commentsFormattingEnabled
-				? cls
-					? makeColorMark(cls, style)
-					: (contentStyleMark(plugin) ?? NEUTRAL_MARK)
+				? cls && style
+					? makeColorMark(cls, effectivePartColors(style, theme, 'text'))
+					: (unassociatedStyleMark(plugin, 'text') ?? NEUTRAL_MARK)
 				: NEUTRAL_MARK;
 
 			// prefixLen = length of the opening delimiter ({@ or {@{parent/child})
@@ -353,9 +347,9 @@ function buildCommentDecorations(
 				builder.add(suffixStart, end, HIDE);
 			} else {
 				const idMark = plugin.commentBracketFormattingEnabled
-					? cls
-						? makeColorMark(cls, style)
-						: (delimiterStyleMark(plugin) ?? NEUTRAL_MARK)
+					? cls && style
+						? makeColorMark(cls, effectivePartColors(style, theme, 'bracket'))
+						: (unassociatedStyleMark(plugin, 'bracket') ?? NEUTRAL_MARK)
 					: NEUTRAL_MARK;
 
 				if (contentStart > start) builder.add(start, contentStart, idMark);
