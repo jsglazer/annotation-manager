@@ -231,6 +231,13 @@ function resolvedStyle(parent, child, styles) {
   var _a, _b;
   return (_b = (_a = resolveIdentifier(parent, child, styles)) == null ? void 0 : _a.style) != null ? _b : null;
 }
+function normalizeHex(value) {
+  const v = value.trim();
+  if (!v) return "";
+  if (/^#[0-9a-fA-F]{6}$/.test(v)) return v;
+  if (/^[0-9a-fA-F]{6}$/.test(v)) return "#" + v;
+  return "";
+}
 function isValidFontSize(value) {
   const v = value.trim();
   if (!v) return false;
@@ -453,7 +460,7 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
       tr.toggleClass("cc-grid-row-unused", !style.use);
       void this.saveAndRefresh();
     });
-    tr.createEl("td", { text: id, cls: "cc-grid-id" });
+    this.renderIdentifierNameCell(tr, id);
     let exampleTd = null;
     const refreshExample = () => {
       if (exampleTd) this.renderIdentifierExample(exampleTd, id);
@@ -490,6 +497,47 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
       }).open();
     });
   }
+  // Editable ID cell: renaming an identifier moves its style to the new key.
+  // Validates against blanks, prototype-unsafe keys, and existing keys; on a
+  // bad name the input reverts to the original and a Notice explains why.
+  renderIdentifierNameCell(tr, id) {
+    const td = tr.createEl("td", { cls: "cc-grid-id" });
+    const input = td.createEl("input", {
+      cls: "cc-grid-id-input",
+      attr: { type: "text", spellcheck: "false" }
+    });
+    input.value = id;
+    const commit = () => {
+      const next = input.value.trim();
+      if (next === id) {
+        input.value = id;
+        return;
+      }
+      const styles = this.plugin.settings.identifierStyles;
+      const current = styles[id];
+      if (!current) return;
+      if (!next || isUnsafeKey(next) || styles[next]) {
+        new import_obsidian.Notice(
+          !next ? "Identifier name cannot be empty" : styles[next] ? `Identifier "${next}" already exists` : `"${next}" is not a valid identifier name`
+        );
+        input.value = id;
+        return;
+      }
+      styles[next] = current;
+      delete styles[id];
+      void this.saveAndRefresh().then(() => this.display());
+    };
+    input.addEventListener("change", commit);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        input.blur();
+      } else if (e.key === "Escape") {
+        input.value = id;
+        input.blur();
+      }
+    });
+  }
   renderIdentifierExample(td, id) {
     td.empty();
     const style = this.plugin.settings.identifierStyles[id];
@@ -511,33 +559,70 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     const span = td.createEl("span", { text });
     span.setCssStyles({ color, backgroundColor, fontSize });
   }
-  // One checkbox-over-swatch cell bound to a ColorOption. Picking a color
-  // auto-enables the checkbox; the checkbox alone toggles whether the stored
-  // color is applied.
+  // One cell bound to a ColorOption: a checkbox, a swatch (native picker), and
+  // an editable hex field. The hex field is the primary way to read/set the
+  // color — type or paste #rrggbb (the # is optional) and the swatch follows.
+  // Setting a color by either control auto-enables the checkbox; the checkbox
+  // alone toggles whether the stored color is applied.
   renderColorCell(td, opt, onChanged) {
     const wrap = td.createDiv("cc-grid-cell");
     const check = wrap.createEl("input", { attr: { type: "checkbox" }, cls: "cc-grid-check" });
     check.checked = opt.enabled;
     const picker = wrap.createEl("input", { attr: { type: "color" }, cls: "cc-grid-color" });
     picker.value = isValidHex(opt.color) ? opt.color : "#888888";
+    const hex = wrap.createEl("input", {
+      cls: "cc-grid-hex",
+      // eslint-disable-next-line obsidianmd/ui/sentence-case -- '#hex' is a hex-notation placeholder, not prose
+      attr: { type: "text", maxlength: "7", placeholder: "#hex", spellcheck: "false" }
+    });
+    hex.value = isValidHex(opt.color) ? opt.color : "";
+    const autoEnable = () => {
+      if (!opt.enabled) {
+        opt.enabled = true;
+        check.checked = true;
+      }
+    };
     check.addEventListener("change", () => {
       opt.enabled = check.checked;
-      if (opt.enabled && !isValidHex(opt.color)) opt.color = picker.value;
+      if (opt.enabled && !isValidHex(opt.color)) {
+        opt.color = picker.value;
+        hex.value = picker.value;
+      }
       void this.saveAndRefresh();
       onChanged();
     });
     picker.addEventListener("input", () => {
       opt.color = picker.value;
-      if (!opt.enabled) {
-        opt.enabled = true;
-        check.checked = true;
-      }
+      hex.value = picker.value;
+      autoEnable();
       onChanged();
     });
     picker.addEventListener("change", () => {
       opt.color = picker.value;
+      hex.value = picker.value;
       void this.saveAndRefresh();
       onChanged();
+    });
+    hex.addEventListener("input", () => {
+      const norm = normalizeHex(hex.value);
+      if (!norm) return;
+      opt.color = norm;
+      picker.value = norm;
+      autoEnable();
+      onChanged();
+    });
+    hex.addEventListener("change", () => {
+      const norm = normalizeHex(hex.value);
+      if (norm) {
+        hex.value = norm;
+        opt.color = norm;
+        picker.value = norm;
+        autoEnable();
+        void this.saveAndRefresh();
+        onChanged();
+      } else {
+        hex.value = isValidHex(opt.color) ? opt.color : "";
+      }
     });
   }
   // ── Comments tab ─────────────────────────────────────────────────────────
