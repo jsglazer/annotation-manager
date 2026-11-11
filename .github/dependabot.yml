@@ -9,6 +9,10 @@ updates:
       dev-dependencies:
         dependency-type: development
     ignore:
+      # typescript-eslint 8.x supports TypeScript <6.1 only; TS 7 breaks `npm ci` (ERESOLVE).
+      # Drop this once typescript-eslint's peer range includes 7.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
       # Pinned to the eslint-plugin-obsidianmd peer / the plugin's minAppVersion;
       # bumping it breaks `npm ci` (peer conflict), so don't auto-PR it.
       - dependency-name: obsidian
@@ -17,3 +21,8 @@ updates:
     directory: '/'
     schedule:
       interval: weekly
+    # One PR for all actions: github/codeql-action's init/analyze/upload-sarif must move together,
+    # and separate PRs leave them on mismatched versions so every one fails.
+    groups:
+      actions:
+        patterns: ['*']
