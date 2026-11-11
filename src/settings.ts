@@ -493,8 +493,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		});
 		p2.appendText(' in the repository.');
 
-		// eslint-disable-next-line obsidianmd/settings-tab/no-problematic-settings-headings, obsidianmd/ui/sentence-case -- heading text specified by design
-		new Setting(containerEl).setName('Sidebar Format Options').setHeading();
+		new Setting(containerEl).setName('Sidebar Format').setHeading();
 		containerEl.createEl('p', {
 			text:
 				'Colors applied to the sidebar toggle buttons (A-F, B-V, B-F, C-V, C-F) based on ' +
@@ -529,7 +528,6 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 	// ── Annotations tab ──────────────────────────────────────────────────────
 
 	private renderAnnotationsTab(containerEl: HTMLElement): void {
-		// eslint-disable-next-line obsidianmd/ui/sentence-case -- heading text specified by design
 		new Setting(containerEl).setName('Annotation Visibility').setHeading();
 
 		this.renderToggle(
@@ -563,7 +561,6 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			},
 		);
 
-		// eslint-disable-next-line obsidianmd/ui/sentence-case -- heading text specified by design
 		new Setting(containerEl).setName('Annotations & Associated Comments').setHeading();
 		containerEl.createEl('p', {
 			text:
@@ -792,7 +789,6 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 		picker.value = isValidHex(opt.color) ? opt.color : '#888888';
 		const hex = wrap.createEl('input', {
 			cls: 'cc-grid-hex',
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- '#hex' is a hex-notation placeholder, not prose
 			attr: { type: 'text', maxlength: '7', placeholder: '#hex', spellcheck: 'false' },
 		});
 		hex.value = isValidHex(opt.color) ? opt.color : '';

@@ -333,7 +333,7 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
       attr: { target: "_blank", rel: "noopener" }
     });
     p2.appendText(" in the repository.");
-    new import_obsidian.Setting(containerEl).setName("Sidebar Format Options").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Sidebar Format").setHeading();
     containerEl.createEl("p", {
       text: "Colors applied to the sidebar toggle buttons (A-F, B-V, B-F, C-V, C-F) based on whether that button's function is currently on or off. When the current note has no annotations or comments, all buttons turn grey instead.",
       cls: "setting-item-description"
@@ -573,7 +573,6 @@ var AnnotationManagerSettingTab = class extends import_obsidian.PluginSettingTab
     picker.value = isValidHex(opt.color) ? opt.color : "#888888";
     const hex = wrap.createEl("input", {
       cls: "cc-grid-hex",
-      // eslint-disable-next-line obsidianmd/ui/sentence-case -- '#hex' is a hex-notation placeholder, not prose
       attr: { type: "text", maxlength: "7", placeholder: "#hex", spellcheck: "false" }
     });
     hex.value = isValidHex(opt.color) ? opt.color : "";

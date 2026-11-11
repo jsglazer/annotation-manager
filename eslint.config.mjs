@@ -40,6 +40,11 @@ export default tseslint.config(
 						'^math/hot$',
 						'^inherit$',
 						'^#rrggbb$',
+						// Title-case settings headings, kept by design. eslint-plugin-obsidianmd 0.5
+						// forbids inline eslint-disable of its rules, so the exceptions live here.
+						'^Sidebar Format$',
+						'^Annotation Visibility$',
+						'^Annotations & Associated Comments$',
 					],
 				},
 			],
