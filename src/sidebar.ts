@@ -54,6 +54,11 @@ export class AnnotationSidebarView extends ItemView {
 			this.expandedSections,
 			filePath ? 'No annotations found in this note.' : 'Open a note to see its annotations.',
 		);
-		renderSidebarToggleRows(root, this.plugin, SIDEBAR_VIEW_TYPE, !this.plugin.hasAnyEntries(filePath));
+		renderSidebarToggleRows(
+			root,
+			this.plugin,
+			SIDEBAR_VIEW_TYPE,
+			!this.plugin.hasAnyEntries(filePath),
+		);
 	}
 }

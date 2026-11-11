@@ -168,7 +168,8 @@ function migrateSettings(raw) {
     const content = asRecord(r.commentContentStyle);
     for (const theme of ["light", "dark"]) {
       if (delim == null ? void 0 : delim[theme]) s.unassociatedCommentStyle[theme].bracket = legacyPartStyle(delim[theme]);
-      if (content == null ? void 0 : content[theme]) s.unassociatedCommentStyle[theme].text = legacyPartStyle(content[theme]);
+      if (content == null ? void 0 : content[theme])
+        s.unassociatedCommentStyle[theme].text = legacyPartStyle(content[theme]);
     }
   }
   const sb = asRecord(r.sidebarButtonStyle);
@@ -1481,7 +1482,12 @@ var AnnotationSidebarView = class extends import_obsidian3.ItemView {
       this.expandedSections,
       filePath ? "No annotations found in this note." : "Open a note to see its annotations."
     );
-    renderSidebarToggleRows(root, this.plugin, SIDEBAR_VIEW_TYPE, !this.plugin.hasAnyEntries(filePath));
+    renderSidebarToggleRows(
+      root,
+      this.plugin,
+      SIDEBAR_VIEW_TYPE,
+      !this.plugin.hasAnyEntries(filePath)
+    );
   }
 };
 
@@ -1755,7 +1761,9 @@ var _AnnotationManagerPlugin = class _AnnotationManagerPlugin extends import_obs
         this.bumpStyleVersion();
         this.refreshSidebar();
         if (!this.suppressNextNotice) {
-          new import_obsidian5.Notice(`Comment brackets ${this.commentBracketsHiddenEnabled ? "hidden" : "visible"}`);
+          new import_obsidian5.Notice(
+            `Comment brackets ${this.commentBracketsHiddenEnabled ? "hidden" : "visible"}`
+          );
         }
       }
     });

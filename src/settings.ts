@@ -257,7 +257,8 @@ export function migrateSettings(raw: unknown): AnnotationManagerSettings {
 		const content = asRecord(r.commentContentStyle);
 		for (const theme of ['light', 'dark'] as const) {
 			if (delim?.[theme]) s.unassociatedCommentStyle[theme].bracket = legacyPartStyle(delim[theme]);
-			if (content?.[theme]) s.unassociatedCommentStyle[theme].text = legacyPartStyle(content[theme]);
+			if (content?.[theme])
+				s.unassociatedCommentStyle[theme].text = legacyPartStyle(content[theme]);
 		}
 	}
 
@@ -902,7 +903,7 @@ export class AnnotationManagerSettingTab extends PluginSettingTab {
 			.setName('Auto-inherit adjacent tag')
 			.setDesc(
 				'When the "Add comment" command runs immediately after an annotation, ' +
-					'skip the identifier picker and inherit that annotation\'s tag instead of prompting',
+					"skip the identifier picker and inherit that annotation's tag instead of prompting",
 			)
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.commentAutoInheritAdjacentTag).onChange(async (v) => {

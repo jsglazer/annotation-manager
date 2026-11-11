@@ -201,8 +201,7 @@ export default class AnnotationManagerPlugin extends Plugin {
 					editor.replaceSelection(annotationPart + commentPart);
 					// Place cursor inside the empty adjacent comment, between {@ and @}
 					const fromOffset = editor.posToOffset(from);
-					const cursorOffset =
-						fromOffset + annotationPart.length + commentPart.length - 2;
+					const cursorOffset = fromOffset + annotationPart.length + commentPart.length - 2;
 					editor.setCursor(editor.offsetToPos(cursorOffset));
 					editor.focus();
 				}).open();
@@ -289,7 +288,9 @@ export default class AnnotationManagerPlugin extends Plugin {
 				this.bumpStyleVersion();
 				this.refreshSidebar();
 				if (!this.suppressNextNotice) {
-					new Notice(`Comment brackets ${this.commentBracketsHiddenEnabled ? 'hidden' : 'visible'}`);
+					new Notice(
+						`Comment brackets ${this.commentBracketsHiddenEnabled ? 'hidden' : 'visible'}`,
+					);
 				}
 			},
 		});
@@ -465,7 +466,9 @@ export default class AnnotationManagerPlugin extends Plugin {
 
 	hasAnyEntries(filePath: string | null): boolean {
 		if (!filePath) return false;
-		return !!this.fileAnnotations.get(filePath)?.length || !!this.fileComments.get(filePath)?.length;
+		return (
+			!!this.fileAnnotations.get(filePath)?.length || !!this.fileComments.get(filePath)?.length
+		);
 	}
 
 	refreshSidebar(): void {
