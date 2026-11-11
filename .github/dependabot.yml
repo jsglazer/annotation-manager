@@ -9,6 +9,9 @@ updates:
       dev-dependencies:
         dependency-type: development
     ignore:
+      # Pinned to the CodeMirror build Obsidian ships at runtime; a newer @codemirror/view pulls a
+      # second @codemirror/state and the types clash (tsc TS2345), so don't auto-PR these.
+      - dependency-name: '@codemirror/*'
       # typescript-eslint 8.x supports TypeScript <6.1 only; TS 7 breaks `npm ci` (ERESOLVE).
       # Drop this once typescript-eslint's peer range includes 7.
       - dependency-name: typescript
